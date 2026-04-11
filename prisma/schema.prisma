@@ -1,0 +1,91 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Match {
+  id            Int           @id @default(autoincrement())
+  date          DateTime
+  homeTeam      String
+  awayTeam      String
+  homeScore     Int?
+  awayScore     Int?
+  roundName     String?
+  leagueMatchId String?       @unique
+  scrapedAt     DateTime      @default(now())
+  news          NewsArticle[]
+  playerStats   PlayerStat[]
+}
+
+model Standing {
+  id           Int      @id @default(autoincrement())
+  teamName     String
+  position     Int
+  played       Int
+  won          Int
+  drawn        Int
+  lost         Int
+  goalsFor     Int
+  goalsAgainst Int
+  points       Int
+  updatedAt    DateTime @updatedAt
+}
+
+model LeagueScorer {
+  id         Int      @id @default(autoincrement())
+  playerName String
+  teamName   String
+  goals      Int
+  updatedAt  DateTime @updatedAt
+}
+
+model Player {
+  id        Int          @id @default(autoincrement())
+  name      String
+  position  String?
+  number    Int?
+  photoUrl  String?
+  bio       String?
+  active    Boolean      @default(true)
+  createdAt DateTime     @default(now())
+  stats     PlayerStat[]
+}
+
+model PlayerStat {
+  id          Int    @id @default(autoincrement())
+  playerId    Int
+  matchId     Int
+  goals       Int    @default(0)
+  assists     Int    @default(0)
+  yellowCards Int    @default(0)
+  redCards    Int    @default(0)
+  player      Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  match       Match  @relation(fields: [matchId], references: [id], onDelete: Cascade)
+}
+
+model NewsArticle {
+  id          Int      @id @default(autoincrement())
+  title       String
+  slug        String   @unique
+  content     String
+  matchId     Int?
+  aiProvider  String
+  generatedAt DateTime @default(now())
+  published   Boolean  @default(false)
+  featured    Boolean  @default(false)
+  match       Match?   @relation(fields: [matchId], references: [id], onDelete: SetNull)
+}
+
+model ScrapeLog {
+  id           Int       @id @default(autoincrement())
+  startedAt    DateTime  @default(now())
+  finishedAt   DateTime?
+  status       String
+  matchesFound Int?
+  errorMessage String?
+  triggeredBy  String
+}
