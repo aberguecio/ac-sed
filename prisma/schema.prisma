@@ -53,6 +53,7 @@ model Player {
   active    Boolean      @default(true)
   createdAt DateTime     @default(now())
   stats     PlayerStat[]
+  goals     MatchGoal[]
 }
 
 model PlayerStat {
@@ -88,4 +89,28 @@ model ScrapeLog {
   matchesFound Int?
   errorMessage String?
   triggeredBy  String
+}
+
+model TournamentAnalysis {
+  id           Int      @id @default(autoincrement())
+  tournamentId Int
+  stageId      Int
+  groupId      Int
+  content      String   @db.Text
+  dataHash     String   // Hash de los datos para detectar cambios
+  aiProvider   String?
+  generatedAt  DateTime @default(now())
+
+  @@unique([tournamentId, stageId, groupId])
+  @@index([tournamentId, stageId])
+}
+
+model MatchGoal {
+  id       String @id @default(uuid())
+  matchId  String
+  playerId Int
+  minute   Int?
+  player   Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([matchId, playerId])
 }
