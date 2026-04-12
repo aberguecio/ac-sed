@@ -37,8 +37,11 @@ export async function generateMatchNews(
           : 'empate'
       : 'partido'
 
-  // Fetch goals and cards for this match
-  const [goals, cards] = await Promise.all([
+  const hasPhaseContext = match.tournamentId !== null && match.stageId !== null
+  const hasGroupContext = hasPhaseContext && match.groupId !== null
+
+  // Fetch goals, cards, and phase context in parallel
+  const [goals, cards, previousMatches, standingsRows, upcomingMatches] = await Promise.all([
     prisma.matchGoal.findMany({
       where: { matchId: match.id },
       include: { scrapedPlayer: true }
@@ -46,7 +49,49 @@ export async function generateMatchNews(
     prisma.matchCard.findMany({
       where: { matchId: match.id },
       include: { scrapedPlayer: true }
-    })
+    }),
+    // A. Previous played matches in same phase (excluding current)
+    hasPhaseContext
+      ? prisma.match.findMany({
+          where: {
+            tournamentId: match.tournamentId!,
+            stageId: match.stageId!,
+            OR: [
+              { homeTeam: { contains: 'AC SED', mode: 'insensitive' } },
+              { awayTeam: { contains: 'AC SED', mode: 'insensitive' } },
+            ],
+            homeScore: { not: null },
+            id: { not: match.id },
+          },
+          orderBy: { date: 'asc' },
+        })
+      : Promise.resolve([]),
+    // B. Standings for the group
+    hasGroupContext
+      ? prisma.standing.findMany({
+          where: {
+            tournamentId: match.tournamentId!,
+            stageId: match.stageId!,
+            groupId: match.groupId!,
+          },
+          orderBy: { position: 'asc' },
+        })
+      : Promise.resolve([]),
+    // C. Upcoming matches (no score yet) in same phase
+    hasPhaseContext
+      ? prisma.match.findMany({
+          where: {
+            tournamentId: match.tournamentId!,
+            stageId: match.stageId!,
+            OR: [
+              { homeTeam: { contains: 'AC SED', mode: 'insensitive' } },
+              { awayTeam: { contains: 'AC SED', mode: 'insensitive' } },
+            ],
+            homeScore: null,
+          },
+          orderBy: { date: 'asc' },
+        })
+      : Promise.resolve([]),
   ])
 
   // Format goals by team
@@ -78,6 +123,70 @@ export async function generateMatchNews(
     }
   }
 
+  // Build previous matches context
+  let streakInfo = ''
+  if (previousMatches.length > 0) {
+    const matchSummaries = previousMatches.map(m => {
+      const isHomeMatch = m.homeTeam.toUpperCase().includes('AC SED') || m.homeTeam.toUpperCase().includes('ACSED')
+      const our = (isHomeMatch ? m.homeScore : m.awayScore) ?? 0
+      const their = (isHomeMatch ? m.awayScore : m.homeScore) ?? 0
+      const rivalName = isHomeMatch ? m.awayTeam : m.homeTeam
+      const resultLabel = our > their ? 'victoria' : our < their ? 'derrota' : 'empate'
+      return `${resultLabel} ${our}-${their} vs ${rivalName}`
+    })
+    streakInfo = `\n- Partidos anteriores en esta fase: ${matchSummaries.join(' | ')}`
+  }
+
+  // Build standings info
+  let standingsInfo = ''
+  if (standingsRows.length > 0) {
+    const acsed = standingsRows.find(s =>
+      s.teamName.toUpperCase().includes('AC SED') || s.teamName.toUpperCase().includes('ACSED')
+    )
+    if (acsed) {
+      const totalTeams = standingsRows.length
+      const isChampionZone = acsed.position <= 2
+      const isRelegationZone = acsed.position > totalTeams - 2
+      const zoneLabel = isChampionZone
+        ? ' (zona de campeón/ascenso)'
+        : isRelegationZone
+          ? ' (zona de descenso)'
+          : ''
+      standingsInfo = `\n- Posición actual en la tabla: ${acsed.position}° de ${totalTeams} equipos${zoneLabel}, ${acsed.points} puntos (G:${acsed.won} E:${acsed.drawn} P:${acsed.lost})`
+    }
+  }
+
+  // Build upcoming matches info
+  let upcomingInfo = ''
+  if (hasPhaseContext) {
+    const remaining = upcomingMatches.length
+    if (remaining === 0) {
+      // This was the last match of the phase
+      const acsed = standingsRows.find(s =>
+        s.teamName.toUpperCase().includes('AC SED') || s.teamName.toUpperCase().includes('ACSED')
+      )
+      if (acsed) {
+        const isChampion = acsed.position === 1
+        const isPromotion = acsed.position === 2
+        const isRelegation = acsed.position > standingsRows.length - 2
+        const outcome = isChampion
+          ? 'CAMPEÓN de la fase'
+          : isPromotion
+            ? 'clasificado en zona de ascenso'
+            : isRelegation
+              ? 'en zona de DESCENSO'
+              : `finalizó ${acsed.position}° de ${standingsRows.length}`
+        upcomingInfo = `\n- ÚLTIMO partido de la fase. AC SED ${outcome} con ${acsed.points} puntos.`
+      } else {
+        upcomingInfo = `\n- ÚLTIMO partido de la fase.`
+      }
+    } else if (remaining === 1) {
+      upcomingInfo = `\n- Quedan ${remaining} partido(s) en la fase — última jornada decisiva.`
+    } else {
+      upcomingInfo = `\n- Partidos restantes en la fase: ${remaining}`
+    }
+  }
+
   const prompt = `Eres el periodista del Club AC SED. Escribe una crónica deportiva en español sobre el siguiente partido de la Liga B chilena.
 
 Datos del partido:
@@ -85,11 +194,11 @@ Datos del partido:
 - ${isHome ? 'Local' : 'Visitante'}: AC SED
 - Rival: ${rival}
 - Resultado: AC SED ${acsedScore ?? '?'} - ${rivalScore ?? '?'} ${rival}
-- ${match.roundName ? `Jornada: ${match.roundName}` : ''}${goalsInfo}${cardsInfo}
+- ${match.roundName ? `Jornada: ${match.roundName}` : ''}${goalsInfo}${cardsInfo}${streakInfo}${standingsInfo}${upcomingInfo}
 
 Genera:
 1. Un TÍTULO periodístico corto y atractivo (máximo 10 palabras)
-2. Una CRÓNICA de aproximadamente 300 palabras que incluya: análisis del resultado (${result}), menciona a los goleadores específicos, desempeño del equipo, importancia del partido para la tabla.
+2. Una CRÓNICA de aproximadamente 300 palabras que incluya: análisis del resultado (${result}), menciona a los goleadores específicos, desempeño del equipo, importancia del partido para la tabla, contexto de la racha y clasificación si es relevante.
 
 Responde ÚNICAMENTE en este formato JSON (sin markdown):
 {"title": "...", "content": "..."}`
@@ -97,7 +206,7 @@ Responde ÚNICAMENTE en este formato JSON (sin markdown):
   const { text } = await generateText({
     model: getModel(),
     prompt,
-    maxTokens: 600,
+    maxTokens: 800,
   })
 
   try {

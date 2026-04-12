@@ -12,10 +12,35 @@ interface Article {
   aiProvider: string
 }
 
+interface ArticleDetail {
+  id: number
+  title: string
+  content: string
+  generatedAt: string
+  match: { date: string } | null
+}
+
+function toDateInputValue(isoString: string) {
+  return isoString.slice(0, 10) // "YYYY-MM-DD"
+}
+
+function dayAfterMatch(matchDate: string) {
+  const d = new Date(matchDate)
+  d.setDate(d.getDate() + 1)
+  return toDateInputValue(d.toISOString())
+}
+
 export default function AdminNewsPage() {
   const [articles, setArticles] = useState<Article[]>([])
   const [loading, setLoading] = useState(true)
   const [actionId, setActionId] = useState<number | null>(null)
+
+  const [editingArticle, setEditingArticle] = useState<ArticleDetail | null>(null)
+  const [editTitle, setEditTitle] = useState('')
+  const [editContent, setEditContent] = useState('')
+  const [editDate, setEditDate] = useState('')
+  const [editLoading, setEditLoading] = useState(false)
+  const [editSaving, setEditSaving] = useState(false)
 
   async function fetchArticles() {
     const res = await fetch('/api/news?all=true&perPage=50')
@@ -50,6 +75,35 @@ export default function AdminNewsPage() {
     await fetch(`/api/news/${id}`, { method: 'DELETE' })
     await fetchArticles()
     setActionId(null)
+  }
+
+  async function openEdit(id: number) {
+    setEditLoading(true)
+    setEditingArticle({ id, title: '', content: '', generatedAt: '', match: null })
+    const res = await fetch(`/api/news/${id}`)
+    const data: ArticleDetail = await res.json()
+    setEditTitle(data.title)
+    setEditContent(data.content)
+    setEditDate(toDateInputValue(data.generatedAt))
+    setEditingArticle(data)
+    setEditLoading(false)
+  }
+
+  async function saveEdit() {
+    if (!editingArticle) return
+    setEditSaving(true)
+    await fetch(`/api/news/${editingArticle.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: editTitle,
+        content: editContent,
+        generatedAt: new Date(editDate).toISOString(),
+      }),
+    })
+    setEditingArticle(null)
+    setEditSaving(false)
+    await fetchArticles()
   }
 
   return (
@@ -97,6 +151,13 @@ export default function AdminNewsPage() {
                         {a.published ? 'Despublicar' : 'Publicar'}
                       </button>
                       <button
+                        onClick={() => openEdit(a.id)}
+                        disabled={actionId === a.id}
+                        className="text-xs px-3 py-1.5 rounded bg-wheat text-navy hover:bg-wheat-light disabled:opacity-40"
+                      >
+                        Editar
+                      </button>
+                      <button
                         onClick={() => regenerate(a.id)}
                         disabled={actionId === a.id}
                         className="text-xs px-3 py-1.5 rounded bg-wheat text-navy hover:bg-wheat-light disabled:opacity-40"
@@ -116,6 +177,94 @@ export default function AdminNewsPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {editingArticle && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <h2 className="text-lg font-extrabold text-navy">Editar noticia</h2>
+              <button
+                onClick={() => setEditingArticle(null)}
+                className="text-gray-400 hover:text-gray-600 text-xl font-bold leading-none"
+                aria-label="Cerrar"
+              >
+                ×
+              </button>
+            </div>
+
+            {editLoading ? (
+              <div className="flex-1 flex items-center justify-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-navy" />
+              </div>
+            ) : (
+              <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-navy mb-1">Título</label>
+                  <input
+                    type="text"
+                    value={editTitle}
+                    onChange={e => setEditTitle(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-navy/30"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-navy mb-1">Fecha de publicación</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="date"
+                      value={editDate}
+                      onChange={e => setEditDate(e.target.value)}
+                      className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-navy/30"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setEditDate(toDateInputValue(new Date().toISOString()))}
+                      className="text-xs px-3 py-2 rounded bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    >
+                      Hoy
+                    </button>
+                    {editingArticle.match && (
+                      <button
+                        type="button"
+                        onClick={() => setEditDate(dayAfterMatch(editingArticle.match!.date))}
+                        className="text-xs px-3 py-2 rounded bg-gray-100 text-gray-600 hover:bg-gray-200"
+                      >
+                        Día después del partido
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-navy mb-1">Contenido</label>
+                  <textarea
+                    value={editContent}
+                    onChange={e => setEditContent(e.target.value)}
+                    rows={14}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-navy/30"
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-100">
+              <button
+                onClick={() => setEditingArticle(null)}
+                disabled={editSaving}
+                className="text-xs px-4 py-2 rounded bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-40"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={saveEdit}
+                disabled={editSaving || editLoading}
+                className="text-xs px-4 py-2 rounded bg-navy text-cream hover:bg-navy-light disabled:opacity-40"
+              >
+                {editSaving ? 'Guardando…' : 'Guardar'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
