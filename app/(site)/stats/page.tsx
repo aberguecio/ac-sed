@@ -3,21 +3,11 @@
 import { useEffect, useState } from 'react'
 import { StandingsTable } from '@/components/standings-table'
 
-const TOURNAMENTS = [
-  { id: 201, name: 'Apertura 2026', stages: [{ id: 396, name: 'Fase 1' }] },
-  { id: 191, name: 'Clausura 2025', stages: [
-    { id: 371, name: 'Fase 1' },
-    { id: 384, name: 'Fase 2' }
-  ]},
-  { id: 178, name: 'Apertura 2025', stages: [
-    { id: 351, name: 'Fase 1' },
-    { id: 360, name: 'Fase 2' }
-  ]},
-  { id: 172, name: 'Clausura 2024', stages: [
-    { id: 322, name: 'Fase 1' },
-    { id: 335, name: 'Fase 2' }
-  ]},
-]
+interface Tournament {
+  id: number
+  name: string
+  stages: { id: number; name: string }[]
+}
 
 interface TeamStats {
   standings: any[]
@@ -34,25 +24,88 @@ interface TeamStats {
 }
 
 export default function StatsPage() {
-  const [selectedTournament, setSelectedTournament] = useState(TOURNAMENTS[0])
-  const [selectedStage, setSelectedStage] = useState(TOURNAMENTS[0].stages[0])
+  const [tournaments, setTournaments] = useState<Tournament[]>([])
+  const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(null)
+  const [selectedStage, setSelectedStage] = useState<{ id: number; name: string } | null>(null)
   const [stats, setStats] = useState<TeamStats | null>(null)
   const [loading, setLoading] = useState(false)
+  const [loadingTournaments, setLoadingTournaments] = useState(true)
+  const [generatingAnalysis, setGeneratingAnalysis] = useState(false)
+
+  async function fetchTournaments() {
+    setLoadingTournaments(true)
+    try {
+      const res = await fetch('/api/tournaments')
+      const data = await res.json()
+      setTournaments(data)
+      if (data.length > 0) {
+        setSelectedTournament(data[0])
+        setSelectedStage(data[0].stages[0])
+      }
+    } catch (err) {
+      console.error('Error fetching tournaments:', err)
+    }
+    setLoadingTournaments(false)
+  }
 
   async function fetchStats() {
+    if (!selectedTournament || !selectedStage) return
+
     setLoading(true)
     try {
       const res = await fetch(`/api/stats?tournamentId=${selectedTournament.id}&stageId=${selectedStage.id}`)
       const data = await res.json()
       setStats(data)
+
+      // Si no hay análisis, generarlo en background
+      if (!data.analysis && data.dataHash) {
+        generateAnalysis(data)
+      }
     } catch (err) {
       console.error('Error fetching stats:', err)
     }
     setLoading(false)
   }
 
+  async function generateAnalysis(statsData: any) {
+    setGeneratingAnalysis(true)
+    try {
+      const res = await fetch('/api/stats/generate-analysis', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tournamentId: statsData.tournamentId,
+          stageId: statsData.stageId,
+          groupId: statsData.groupId,
+          dataHash: statsData.dataHash,
+          standingsData: statsData.standings,
+          fixtures: statsData.fixtures,
+          teamScorers: statsData.teamScorers,
+          matchesPlayed: statsData.matchesPlayed,
+          matchesRemaining: statsData.matchesRemaining,
+        }),
+      })
+
+      const result = await res.json()
+      if (result.analysis) {
+        // Actualizar el análisis en el estado
+        setStats(prev => prev ? { ...prev, analysis: result.analysis } : null)
+      }
+    } catch (err) {
+      console.error('Error generating analysis:', err)
+    } finally {
+      setGeneratingAnalysis(false)
+    }
+  }
+
   useEffect(() => {
-    fetchStats()
+    fetchTournaments()
+  }, [])
+
+  useEffect(() => {
+    if (selectedStage) {
+      fetchStats()
+    }
   }, [selectedStage])
 
   const goalsPerMatch = stats && stats.matchesPlayed > 0
@@ -64,41 +117,57 @@ export default function StatsPage() {
       <h1 className="text-3xl font-extrabold text-navy mb-8">Estadísticas</h1>
 
       {/* Tournament Selector */}
-      <div className="bg-white rounded-lg p-4 shadow-sm mb-6">
-        <div className="flex gap-4">
-          <div className="flex-1">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Torneo</label>
-            <select
-              value={selectedTournament.id}
-              onChange={(e) => {
-                const t = TOURNAMENTS.find(t => t.id === Number(e.target.value))!
-                setSelectedTournament(t)
-                setSelectedStage(t.stages[0])
-              }}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2"
-            >
-              {TOURNAMENTS.map((t) => (
-                <option key={t.id} value={t.id}>{t.name}</option>
-              ))}
-            </select>
-          </div>
-          <div className="flex-1">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Fase</label>
-            <select
-              value={selectedStage.id}
-              onChange={(e) => {
-                const s = selectedTournament.stages.find(s => s.id === Number(e.target.value))!
-                setSelectedStage(s)
-              }}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2"
-            >
-              {selectedTournament.stages.map((s) => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
+      {loadingTournaments ? (
+        <div className="bg-white rounded-lg p-4 shadow-sm mb-6">
+          <div className="flex items-center gap-3">
+            <div className="inline-block animate-spin rounded-full h-5 w-5 border-b-2 border-navy"></div>
+            <p className="text-gray-600">Cargando torneos...</p>
           </div>
         </div>
-      </div>
+      ) : tournaments.length === 0 ? (
+        <div className="bg-white rounded-lg p-4 shadow-sm mb-6">
+          <p className="text-gray-600">No hay torneos disponibles. Ejecuta el scraper primero.</p>
+        </div>
+      ) : (
+        <div className="bg-white rounded-lg p-4 shadow-sm mb-6">
+          <div className="flex gap-4">
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Torneo</label>
+              <select
+                value={selectedTournament?.id || ''}
+                onChange={(e) => {
+                  const t = tournaments.find(t => t.id === Number(e.target.value))
+                  if (t) {
+                    setSelectedTournament(t)
+                    setSelectedStage(t.stages[0])
+                  }
+                }}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+              >
+                {tournaments.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Fase</label>
+              <select
+                value={selectedStage?.id || ''}
+                onChange={(e) => {
+                  const s = selectedTournament?.stages.find(s => s.id === Number(e.target.value))
+                  if (s) setSelectedStage(s)
+                }}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                disabled={!selectedTournament}
+              >
+                {selectedTournament?.stages.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="text-center py-12">
@@ -192,14 +261,21 @@ export default function StatsPage() {
           </div>
 
           {/* AI Analysis */}
-          {stats.analysis && (
+          {(stats.analysis || generatingAnalysis) && (
             <div className="bg-gradient-to-r from-navy to-navy-light text-cream rounded-xl p-6 shadow-lg">
               <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
                 🎯 Análisis del Coach
               </h2>
-              <div className="prose prose-invert max-w-none">
-                <p className="whitespace-pre-wrap">{stats.analysis}</p>
-              </div>
+              {generatingAnalysis ? (
+                <div className="flex items-center gap-3">
+                  <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-cream"></div>
+                  <p className="text-cream/80">Generando análisis del coach...</p>
+                </div>
+              ) : (
+                <div className="prose prose-invert max-w-none">
+                  <p className="whitespace-pre-wrap">{stats.analysis}</p>
+                </div>
+              )}
             </div>
           )}
 

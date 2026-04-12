@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { generateText } from 'ai'
-import { openai, createOpenAI } from '@ai-sdk/openai'
+import { generateCoachAnalysis } from '@/lib/coach-analysis'
 import crypto from 'crypto'
 
 const LIGAB_API = 'https://api.ligab.cl/v1'
@@ -12,75 +11,6 @@ async function fetchAPI(endpoint: string) {
   const res = await fetch(`${LIGAB_API}${endpoint}`)
   if (!res.ok) throw new Error(`API error: ${res.status}`)
   return res.json()
-}
-
-function getAIModel() {
-  const model = process.env.AI_MODEL ?? 'gpt-4o-mini'
-  const apiKey = process.env.AI_API_KEY
-  const baseURL = process.env.AI_BASE_URL
-
-  if (baseURL) {
-    const customProvider = createOpenAI({ baseURL, apiKey: apiKey ?? 'dummy-key' })
-    return customProvider(model)
-  }
-  return openai(model)
-}
-
-async function generateAnalysis(data: any): Promise<string> {
-  const { standings, fixtures, teamScorers, matchesPlayed, matchesRemaining } = data
-
-  const acsedStanding = standings.find((s: any) => s.teamName === ACSED_TEAM_NAME)
-  if (!acsedStanding) return ''
-
-  const position = acsedStanding.position
-  const points = acsedStanding.points
-  const isFirst = position === 1
-  const isLast = position === standings.length
-  const pointsToFirst = isFirst ? 0 : standings[0].points - points
-  const pointsAboveLast = isLast ? 0 : points - standings[standings.length - 1].points
-
-  const upcomingMatches = fixtures
-    .filter((f: any) => !f.homeScore && !f.awayScore)
-    .slice(0, matchesRemaining)
-
-  const prompt = `Eres el coach exigente del AC SED. Analiza la situación actual y escribe un análisis motivador pero realista.
-
-Situación actual:
-- Posición: ${position} de ${standings.length} equipos
-- Puntos: ${points}
-- Partidos jugados: ${matchesPlayed}
-- Partidos restantes: ${matchesRemaining}
-- Diferencia con el primero: ${pointsToFirst} puntos
-- Ventaja sobre el último: ${pointsAboveLast} puntos
-
-Tabla actual:
-${standings.slice(0, 5).map((s: any) => `${s.position}. ${s.teamName}: ${s.points}pts (PJ:${s.played} G:${s.won} E:${s.drawn} P:${s.lost})`).join('\n')}
-
-Próximos rivales:
-${upcomingMatches.map((m: any) => {
-  const rival = m.homeTeam === ACSED_TEAM_NAME ? m.awayTeam : m.homeTeam
-  const rivalStanding = standings.find((s: any) => s.teamName === rival)
-  return `- ${rival} (Posición: ${rivalStanding?.position || '?'}, Puntos: ${rivalStanding?.points || '?'})`
-}).join('\n')}
-
-Goleadores del equipo:
-${teamScorers.slice(0, 3).map((s: any) => `- ${s.playerName}: ${s.goals} goles`).join('\n')}
-
-Escribe un análisis de 3-4 párrafos como un coach argentino exigente pero motivador. Incluye:
-1. Análisis de la situación actual (qué necesitamos para campeonar o evitar descenso)
-2. Evaluación de los próximos partidos y qué resultados necesitamos
-3. Mensaje motivador pero realista al equipo
-4. Si queda 1 partido, ser MUY específico sobre los escenarios
-
-Usa frases cortas y directas. Sé específico con números y escenarios.`
-
-  const { text } = await generateText({
-    model: getAIModel(),
-    prompt,
-    maxTokens: 600,
-  })
-
-  return text
 }
 
 export async function POST(request: Request) {
@@ -144,24 +74,49 @@ export async function POST(request: Request) {
     }))
 
     const matchesPlayed = fixtures.filter((f: any) => f.homeScore !== null).length
-    const totalMatches = 10
+    const totalMatches = 5 // 5 matches per phase
     const matchesRemaining = totalMatches - matchesPlayed
 
     // Get AC SED scorers
     const teamScorers = (topScorersAll || [])
       .filter((s: any) => (s.team?.name || s.teamName) === ACSED_TEAM_NAME)
       .map((s: any) => ({
-        playerName: s.player?.name || s.playerName || 'Unknown',
+        playerName: s.player ? `${s.player.firstName} ${s.player.lastName}`.trim() : s.playerName || 'Unknown',
         goals: s.goals || 0,
       }))
 
+    // Get historical matches from our database for upcoming rivals
+    const upcomingRivals = fixtures
+      .filter((f: any) => !f.homeScore && !f.awayScore)
+      .slice(0, matchesRemaining)
+      .map((f: any) => f.homeTeam === ACSED_TEAM_NAME ? f.awayTeam : f.homeTeam)
+
+    const previousMatches = upcomingRivals.length > 0
+      ? await prisma.match.findMany({
+          where: {
+            OR: upcomingRivals.map((rival: string) => ({
+              OR: [
+                { homeTeam: ACSED_TEAM_NAME, awayTeam: rival },
+                { homeTeam: rival, awayTeam: ACSED_TEAM_NAME }
+              ]
+            })),
+            homeScore: { not: null },
+            awayScore: { not: null }
+          },
+          orderBy: { date: 'desc' },
+          take: 10
+        })
+      : []
+
     // Generate new analysis (force regeneration)
-    const analysis = await generateAnalysis({
+    const analysis = await generateCoachAnalysis({
       standings: standingsData,
       fixtures,
       teamScorers,
       matchesPlayed,
       matchesRemaining,
+      topScorersAll,
+      previousMatches,
     })
 
     // Calculate new data hash

@@ -2,7 +2,7 @@ import { prisma } from './db'
 import type { Match } from '@prisma/client'
 
 const ACSED_TEAM_ID = 2836 // AC SED team ID
-const ACSED_TEAM = 'ACSED'
+const ACSED_TEAM_NAME = 'AC Sed'
 const LIGAB_API = 'https://api.ligab.cl/v1'
 const LEAGUE_ID = 24 // Liga B ID
 
@@ -120,39 +120,53 @@ export async function runScraper(
   })
 
   try {
+    console.log('🔍 Starting scraper...')
     let tournamentId: number
     let stageId: number
 
     // Si se proveen opciones, usar esos valores
     if (options?.tournamentId && options?.stageId) {
+      console.log(`📋 Using provided tournament ${options.tournamentId} and stage ${options.stageId}`)
       tournamentId = options.tournamentId
       stageId = options.stageId
     } else {
       // Get active tournament and stages
+      console.log('🔍 Fetching tournaments...')
       const tournamentsRes = await fetchAPI(`/leagues/${LEAGUE_ID}/tournaments?filter={"include":[{"relation":"stages"}]}`)
       const tournaments = Array.isArray(tournamentsRes) ? tournamentsRes : []
+      console.log(`✓ Found ${tournaments.length} tournaments`)
       const activeTournament = tournaments.find((t: any) => t.isActive) || tournaments[tournaments.length - 1]
 
       if (!activeTournament) throw new Error('No tournaments found')
+      console.log(`✓ Active tournament: ${activeTournament.name || activeTournament.id} (ID: ${activeTournament.id})`)
 
       const activeStage = activeTournament.stages?.find((s: any) => s.isActive) || activeTournament.stages?.[0]
       if (!activeStage) throw new Error('No active stage found')
+      console.log(`✓ Active stage: ${activeStage.name || activeStage.id} (ID: ${activeStage.id})`)
 
       tournamentId = activeTournament.id
       stageId = activeStage.id
     }
 
     // Get groups for this stage
+    console.log(`🔍 Fetching groups for stage ${stageId}...`)
     const groups = await fetchAPI(`/stages/${stageId}/groups`)
     const allGroupIds = Array.isArray(groups) ? groups.map((g: any) => g.id) : []
+    console.log(`✓ Found ${allGroupIds.length} groups`)
 
     // Find AC SED's group
+    console.log('🔍 Searching for AC SED in groups...')
     let acsedGroupId: number | null = null
+    let acsedGroupName: string = ''
     for (const groupId of allGroupIds) {
+      console.log(`  Checking group ${groupId}...`)
+      const groupInfo = groups.find((g: any) => g.id === groupId)
       const standings = await fetchAPI(`/groups/${groupId}/standings`).catch(() => [])
       const hasAcSed = standings.some((s: any) => s.team?.id === ACSED_TEAM_ID)
       if (hasAcSed) {
         acsedGroupId = groupId
+        acsedGroupName = groupInfo?.name || `Grupo ${groupId}`
+        console.log(`✓ AC SED found in group ${acsedGroupId} (${acsedGroupName})`)
         break
       }
     }
@@ -160,8 +174,6 @@ export async function runScraper(
     if (!acsedGroupId) {
       throw new Error('AC SED not found in any group for this stage')
     }
-
-    console.log(`✓ AC SED found in group ${acsedGroupId}`)
 
     // Only fetch data for AC SED's group
     const [standings, matchDays, topScorers] = await Promise.all([
@@ -172,8 +184,20 @@ export async function runScraper(
 
     // Process standings from AC SED's group only
     if (Array.isArray(standings) && standings.length > 0) {
-      await prisma.standing.deleteMany()
+      console.log(`💾 Saving ${standings.length} standings...`)
+      // Delete only standings for this specific tournament/stage/group
+      await prisma.standing.deleteMany({
+        where: {
+          tournamentId,
+          stageId,
+          groupId: acsedGroupId
+        }
+      })
       const standingsData = standings.map((s: any) => ({
+        tournamentId,
+        stageId,
+        groupId: acsedGroupId,
+        groupName: acsedGroupName,
         teamName: s.team?.name || 'Unknown',
         position: s.team?.id === ACSED_TEAM_ID ? 1 : 99, // Priorizar AC SED
         played: s.played || 0,
@@ -189,24 +213,35 @@ export async function runScraper(
       // Asignar posiciones correctas
       standingsData.forEach((s, i) => (s.position = i + 1))
       await prisma.standing.createMany({ data: standingsData })
+      console.log('✓ Standings saved')
     }
 
     // Process top scorers
     if (Array.isArray(topScorers) && topScorers.length > 0) {
-      await prisma.leagueScorer.deleteMany()
+      console.log(`💾 Saving ${topScorers.length} scorers...`)
+      // Delete only scorers for this tournament
+      await prisma.leagueScorer.deleteMany({
+        where: { tournamentId }
+      })
       const scorersData = topScorers.map((s: any) => ({
-        playerName: s.player?.name || s.playerName || 'Unknown',
+        tournamentId,
+        playerName: s.player
+          ? `${s.player.firstName} ${s.player.lastName}`.trim()
+          : s.playerName || 'Unknown',
         teamName: s.team?.name || s.teamName || 'Unknown',
         goals: s.goals || 0,
       }))
       await prisma.leagueScorer.createMany({ data: scorersData })
+      console.log('✓ Scorers saved')
     }
 
     // Process matches from all match days
+    console.log('💾 Processing matches...')
     const newMatches: Match[] = []
     const allMatches = Array.isArray(matchDays)
       ? matchDays.flatMap((md: any) => md.matches || [])
       : []
+    console.log(`  Found ${allMatches.length} total matches`)
 
     for (const match of allMatches) {
       const matchId = String(match.id)
@@ -214,6 +249,9 @@ export async function runScraper(
       const awayTeam = match.awayTeam?.name || 'Unknown'
 
       const matchData = {
+        tournamentId,
+        stageId,
+        groupId: match.groupId || acsedGroupId,
         homeTeam,
         awayTeam,
         homeScore: match.homeScore,
@@ -230,8 +268,8 @@ export async function runScraper(
       if (!existing) {
         const created = await prisma.match.create({ data: matchData })
         if (
-          homeTeam.toUpperCase().includes(ACSED_TEAM) ||
-          awayTeam.toUpperCase().includes(ACSED_TEAM)
+          homeTeam.includes('AC Sed') ||
+          awayTeam.includes('AC Sed')
         ) {
           newMatches.push(created)
         }
@@ -246,6 +284,8 @@ export async function runScraper(
         })
       }
     }
+
+    console.log(`✅ Scraper completed! Found ${newMatches.length} new AC SED matches`)
 
     await prisma.scrapeLog.update({
       where: { id: log.id },

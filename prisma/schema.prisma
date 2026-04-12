@@ -9,6 +9,9 @@ datasource db {
 
 model Match {
   id            Int           @id @default(autoincrement())
+  tournamentId  Int?
+  stageId       Int?
+  groupId       Int?
   date          DateTime
   homeTeam      String
   awayTeam      String
@@ -19,10 +22,16 @@ model Match {
   scrapedAt     DateTime      @default(now())
   news          NewsArticle[]
   playerStats   PlayerStat[]
+
+  @@index([tournamentId, stageId, groupId])
 }
 
 model Standing {
   id           Int      @id @default(autoincrement())
+  tournamentId Int
+  stageId      Int
+  groupId      Int
+  groupName    String
   teamName     String
   position     Int
   played       Int
@@ -33,14 +42,20 @@ model Standing {
   goalsAgainst Int
   points       Int
   updatedAt    DateTime @updatedAt
+
+  @@unique([tournamentId, stageId, groupId, teamName])
+  @@index([tournamentId, stageId, groupId])
 }
 
 model LeagueScorer {
-  id         Int      @id @default(autoincrement())
-  playerName String
-  teamName   String
-  goals      Int
-  updatedAt  DateTime @updatedAt
+  id           Int      @id @default(autoincrement())
+  tournamentId Int
+  playerName   String
+  teamName     String
+  goals        Int
+  updatedAt    DateTime @updatedAt
+
+  @@index([tournamentId])
 }
 
 model Player {
