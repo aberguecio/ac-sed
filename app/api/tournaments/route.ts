@@ -4,32 +4,34 @@ import { prisma } from '@/lib/db'
 export async function GET() {
   try {
     // Get all unique tournament/stage combinations from standings (scraped data)
-    const standings = await prisma.standing.findMany({
+    const allStandings = await prisma.standing.findMany({
       select: {
         tournamentId: true,
         stageId: true,
-        groupId: true,
-        groupName: true,
       },
-      distinct: ['tournamentId', 'stageId'],
       orderBy: [
         { tournamentId: 'desc' },
-        { stageId: 'desc' }
+        { stageId: 'asc' }
       ]
     })
 
-    // Get unique tournaments
-    const uniqueTournaments = new Map<number, Set<number>>()
+    // Group by tournament and collect unique stages
+    const tournamentStagesMap = new Map<number, Set<number>>()
 
-    standings.forEach((s) => {
-      if (!uniqueTournaments.has(s.tournamentId)) {
-        uniqueTournaments.set(s.tournamentId, new Set())
+    allStandings.forEach((s) => {
+      if (!tournamentStagesMap.has(s.tournamentId)) {
+        tournamentStagesMap.set(s.tournamentId, new Set())
       }
-      uniqueTournaments.get(s.tournamentId)!.add(s.stageId)
+      tournamentStagesMap.get(s.tournamentId)!.add(s.stageId)
     })
 
-    // Map to tournament names (you can enhance this with actual names from API later)
-    const tournaments = Array.from(uniqueTournaments.entries()).map(([tournamentId, stageIds]) => {
+    console.log('Tournament stages map:', Array.from(tournamentStagesMap.entries()).map(([tid, stages]) => ({
+      tournamentId: tid,
+      stageIds: Array.from(stages)
+    })))
+
+    // Map to tournament names
+    const tournaments = Array.from(tournamentStagesMap.entries()).map(([tournamentId, stageIdsSet]) => {
       // Determine tournament name based on ID
       let name = 'Torneo Desconocido'
       if (tournamentId === 201) name = 'Apertura 2026'
@@ -38,16 +40,20 @@ export async function GET() {
       else if (tournamentId === 172) name = 'Clausura 2024'
       else name = `Torneo ${tournamentId}`
 
-      const stages = Array.from(stageIds).map((stageId, index) => {
+      // Convert Set to sorted array
+      const stageIds = Array.from(stageIdsSet).sort((a, b) => a - b)
+
+      const stages = stageIds.map((stageId, index) => {
         // Determine stage name
         let stageName = `Fase ${index + 1}`
-        // You can add more specific mappings here if needed
 
         return {
           id: stageId,
           name: stageName
         }
       })
+
+      console.log(`Tournament ${tournamentId} (${name}): ${stages.length} stages`, stages)
 
       return {
         id: tournamentId,

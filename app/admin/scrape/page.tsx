@@ -13,11 +13,11 @@ interface ScrapeLog {
 }
 
 const TOURNAMENTS = [
-  { id: 0, name: 'Torneo Activo (Automático)', stageId: 0 },
-  { id: 191, name: 'Clausura 2025', stageId: 384 },
-  { id: 178, name: 'Apertura 2025', stageId: 360 },
-  { id: 172, name: 'Clausura 2024', stageId: 335 },
-  { id: 160, name: 'Apertura 2024', stageId: 307 },
+  { id: 0, name: 'Torneo Activo (Automático)' },
+  { id: 191, name: 'Clausura 2025' },
+  { id: 178, name: 'Apertura 2025' },
+  { id: 172, name: 'Clausura 2024' },
+  { id: 160, name: 'Apertura 2024' },
 ]
 
 export default function AdminScrapePage() {
@@ -43,7 +43,7 @@ export default function AdminScrapePage() {
       const tournament = TOURNAMENTS.find(t => t.id === selectedTournament)
       const body = tournament?.id === 0
         ? {}
-        : { tournamentId: tournament?.id, stageId: tournament?.stageId }
+        : { tournamentId: tournament?.id }
 
       const res = await fetch('/api/scrape', {
         method: 'POST',

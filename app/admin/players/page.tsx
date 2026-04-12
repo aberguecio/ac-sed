@@ -9,6 +9,18 @@ interface Player {
   number: number | null
   bio: string | null
   active: boolean
+  leaguePlayerId: number | null
+}
+
+interface ScrapedPlayer {
+  id: number
+  firstName: string
+  lastName: string
+  teamName: string
+  _count: {
+    goals: number
+    cards: number
+  }
 }
 
 const emptyForm = { name: '', position: '', number: '', bio: '' }
@@ -20,13 +32,28 @@ export default function AdminPlayersPage() {
   const [editId, setEditId] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
 
+  // Linking state
+  const [unlinkedScraped, setUnlinkedScraped] = useState<ScrapedPlayer[]>([])
+  const [allUnlinkedScraped, setAllUnlinkedScraped] = useState<ScrapedPlayer[]>([])
+  const [linkingPlayerId, setLinkingPlayerId] = useState<number | null>(null)
+
   async function fetchPlayers() {
     const res = await fetch('/api/players')
     setPlayers(await res.json())
     setLoading(false)
   }
 
-  useEffect(() => { fetchPlayers() }, [])
+  async function fetchLinkData() {
+    const res = await fetch('/api/admin/players/link')
+    const data = await res.json()
+    setUnlinkedScraped(data.unlinkedScraped || [])
+    setAllUnlinkedScraped(data.allUnlinkedScraped || [])
+  }
+
+  useEffect(() => {
+    fetchPlayers()
+    fetchLinkData()
+  }, [])
 
   function startEdit(p: Player) {
     setEditId(p.id)
@@ -72,9 +99,66 @@ export default function AdminPlayersPage() {
     await fetchPlayers()
   }
 
+  async function linkPlayer(rosterPlayerId: number, scrapedPlayerId: number) {
+    setLinkingPlayerId(rosterPlayerId)
+    await fetch('/api/admin/players/link', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rosterPlayerId, scrapedPlayerId })
+    })
+    await fetchPlayers()
+    await fetchLinkData()
+    setLinkingPlayerId(null)
+  }
+
+  async function generatePlayer(scrapedPlayerId: number) {
+    setSaving(true)
+    const res = await fetch('/api/admin/players/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scrapedPlayerId })
+    })
+
+    const data = await res.json()
+
+    if (!res.ok) {
+      alert(data.error || 'Error al generar jugador')
+    }
+
+    await fetchPlayers()
+    await fetchLinkData()
+    setSaving(false)
+  }
+
   return (
     <div className="p-8">
       <h1 className="text-2xl font-extrabold text-navy mb-8">Jugadores</h1>
+
+      {/* Unlinked Scraped Players */}
+      {unlinkedScraped.length > 0 && (
+        <div className="mb-8 bg-blue-50 border border-blue-200 rounded-xl p-6">
+          <h2 className="font-bold text-navy mb-4">🔗 Jugadores Scrapeados de AC SED sin Vincular</h2>
+          <p className="text-sm text-gray-600 mb-4">Estos jugadores fueron encontrados en partidos pero no están en el roster. Puedes generar un jugador automáticamente.</p>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {unlinkedScraped.map((sp) => (
+              <div key={sp.id} className="bg-white rounded-lg p-4 border border-gray-200">
+                <p className="font-semibold text-navy">{sp.firstName} {sp.lastName}</p>
+                <p className="text-xs text-gray-500 mb-2">{sp.teamName}</p>
+                <p className="text-sm text-gray-600 mb-3">
+                  {sp._count.goals} gol{sp._count.goals !== 1 ? 'es' : ''} • {sp._count.cards} tarjeta{sp._count.cards !== 1 ? 's' : ''}
+                </p>
+                <button
+                  onClick={() => generatePlayer(sp.id)}
+                  disabled={saving}
+                  className="w-full bg-green-600 text-white py-2 rounded-lg text-sm font-semibold hover:bg-green-700 disabled:opacity-50"
+                >
+                  Generar Jugador
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid lg:grid-cols-3 gap-8">
         {/* Form */}
@@ -130,6 +214,7 @@ export default function AdminPlayersPage() {
                     <th className="px-4 py-3 text-left text-gray-500 font-medium">#</th>
                     <th className="px-4 py-3 text-left text-gray-500 font-medium">Nombre</th>
                     <th className="px-4 py-3 text-left text-gray-500 font-medium">Posición</th>
+                    <th className="px-4 py-3 text-left text-gray-500 font-medium">Vinculación</th>
                     <th className="px-4 py-3 text-right text-gray-500 font-medium">Acciones</th>
                   </tr>
                 </thead>
@@ -139,6 +224,27 @@ export default function AdminPlayersPage() {
                       <td className="px-4 py-3 text-gray-400">{p.number ?? '—'}</td>
                       <td className="px-4 py-3 font-medium text-navy">{p.name}</td>
                       <td className="px-4 py-3 text-gray-500">{p.position ?? '—'}</td>
+                      <td className="px-4 py-3">
+                        {p.leaguePlayerId ? (
+                          <span className="text-xs text-green-600 font-semibold">✓ Vinculado</span>
+                        ) : (
+                          <select
+                            onChange={(e) => {
+                              const scrapedId = parseInt(e.target.value)
+                              if (scrapedId) linkPlayer(p.id, scrapedId)
+                            }}
+                            disabled={linkingPlayerId === p.id}
+                            className="text-xs border border-gray-300 rounded px-2 py-1"
+                          >
+                            <option value="">Vincular...</option>
+                            {allUnlinkedScraped.map((sp) => (
+                              <option key={sp.id} value={sp.id}>
+                                {sp.firstName} {sp.lastName} ({sp.teamName})
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </td>
                       <td className="px-4 py-3">
                         <div className="flex justify-end gap-2">
                           <button onClick={() => startEdit(p)} className="text-xs px-3 py-1.5 rounded bg-navy text-cream hover:bg-navy-light">

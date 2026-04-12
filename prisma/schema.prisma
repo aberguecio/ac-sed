@@ -21,7 +21,8 @@ model Match {
   leagueMatchId String?       @unique
   scrapedAt     DateTime      @default(now())
   news          NewsArticle[]
-  playerStats   PlayerStat[]
+  goals         MatchGoal[]
+  cards         MatchCard[]
 
   @@index([tournamentId, stageId, groupId])
 }
@@ -59,28 +60,36 @@ model LeagueScorer {
 }
 
 model Player {
-  id        Int          @id @default(autoincrement())
-  name      String
-  position  String?
-  number    Int?
-  photoUrl  String?
-  bio       String?
-  active    Boolean      @default(true)
-  createdAt DateTime     @default(now())
-  stats     PlayerStat[]
-  goals     MatchGoal[]
+  id               Int            @id @default(autoincrement())
+  name             String
+  position         String?
+  number           Int?
+  photoUrl         String?
+  bio              String?
+  active           Boolean        @default(true)
+  createdAt        DateTime       @default(now())
+  // Link to scraped player data
+  leaguePlayerId   Int?           @unique // ID from Liga B API
+  goals            MatchGoal[]
+  cards            MatchCard[]
 }
 
-model PlayerStat {
-  id          Int    @id @default(autoincrement())
-  playerId    Int
-  matchId     Int
-  goals       Int    @default(0)
-  assists     Int    @default(0)
-  yellowCards Int    @default(0)
-  redCards    Int    @default(0)
-  player      Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
-  match       Match  @relation(fields: [matchId], references: [id], onDelete: Cascade)
+// Scraped player from Liga B API (not our roster)
+model ScrapedPlayer {
+  id            Int         @id // Liga B API player ID
+  firstName     String
+  lastName      String
+  email         String?
+  run           String?
+  teamId        Int?
+  teamName      String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  goals         MatchGoal[]
+  cards         MatchCard[]
+
+  @@index([teamId])
+  @@index([teamName])
 }
 
 model NewsArticle {
@@ -121,11 +130,39 @@ model TournamentAnalysis {
 }
 
 model MatchGoal {
-  id       String @id @default(uuid())
-  matchId  String
-  playerId Int
-  minute   Int?
-  player   Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  id              Int            @id @default(autoincrement())
+  matchId         Int
+  leaguePlayerId  Int            // Player ID from Liga B API
+  minute          Int?
+  teamName        String
+  createdAt       DateTime       @default(now())
+  match           Match          @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  scrapedPlayer   ScrapedPlayer  @relation(fields: [leaguePlayerId], references: [id], onDelete: Cascade)
+  // Optional link to our roster player
+  rosterPlayer    Player?        @relation(fields: [rosterPlayerId], references: [id], onDelete: SetNull)
+  rosterPlayerId  Int?
 
-  @@unique([matchId, playerId])
+  @@unique([matchId, leaguePlayerId])
+  @@index([leaguePlayerId])
+  @@index([rosterPlayerId])
+}
+
+model MatchCard {
+  id              Int            @id @default(autoincrement())
+  matchId         Int
+  leaguePlayerId  Int            // Player ID from Liga B API
+  cardType        String         // 'yellow' or 'red'
+  minute          Int?
+  reason          String?
+  teamName        String
+  createdAt       DateTime       @default(now())
+  match           Match          @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  scrapedPlayer   ScrapedPlayer  @relation(fields: [leaguePlayerId], references: [id], onDelete: Cascade)
+  // Optional link to our roster player
+  rosterPlayer    Player?        @relation(fields: [rosterPlayerId], references: [id], onDelete: SetNull)
+  rosterPlayerId  Int?
+
+  @@index([matchId])
+  @@index([leaguePlayerId])
+  @@index([rosterPlayerId])
 }
