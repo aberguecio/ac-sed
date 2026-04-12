@@ -16,6 +16,18 @@ interface ArticleDetail {
   id: number
   title: string
   content: string
+  generatedAt: string
+  match: { date: string } | null
+}
+
+function toDateInputValue(isoString: string) {
+  return isoString.slice(0, 10) // "YYYY-MM-DD"
+}
+
+function dayAfterMatch(matchDate: string) {
+  const d = new Date(matchDate)
+  d.setDate(d.getDate() + 1)
+  return toDateInputValue(d.toISOString())
 }
 
 export default function AdminNewsPage() {
@@ -26,6 +38,7 @@ export default function AdminNewsPage() {
   const [editingArticle, setEditingArticle] = useState<ArticleDetail | null>(null)
   const [editTitle, setEditTitle] = useState('')
   const [editContent, setEditContent] = useState('')
+  const [editDate, setEditDate] = useState('')
   const [editLoading, setEditLoading] = useState(false)
   const [editSaving, setEditSaving] = useState(false)
 
@@ -66,11 +79,12 @@ export default function AdminNewsPage() {
 
   async function openEdit(id: number) {
     setEditLoading(true)
-    setEditingArticle({ id, title: '', content: '' })
+    setEditingArticle({ id, title: '', content: '', generatedAt: '', match: null })
     const res = await fetch(`/api/news/${id}`)
     const data: ArticleDetail = await res.json()
     setEditTitle(data.title)
     setEditContent(data.content)
+    setEditDate(toDateInputValue(data.generatedAt))
     setEditingArticle(data)
     setEditLoading(false)
   }
@@ -81,7 +95,11 @@ export default function AdminNewsPage() {
     await fetch(`/api/news/${editingArticle.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: editTitle, content: editContent }),
+      body: JSON.stringify({
+        title: editTitle,
+        content: editContent,
+        generatedAt: new Date(editDate).toISOString(),
+      }),
     })
     setEditingArticle(null)
     setEditSaving(false)
@@ -190,6 +208,33 @@ export default function AdminNewsPage() {
                     onChange={e => setEditTitle(e.target.value)}
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-navy/30"
                   />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-navy mb-1">Fecha de publicación</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="date"
+                      value={editDate}
+                      onChange={e => setEditDate(e.target.value)}
+                      className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-navy/30"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setEditDate(toDateInputValue(new Date().toISOString()))}
+                      className="text-xs px-3 py-2 rounded bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    >
+                      Hoy
+                    </button>
+                    {editingArticle.match && (
+                      <button
+                        type="button"
+                        onClick={() => setEditDate(dayAfterMatch(editingArticle.match!.date))}
+                        className="text-xs px-3 py-2 rounded bg-gray-100 text-gray-600 hover:bg-gray-200"
+                      >
+                        Día después del partido
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-navy mb-1">Contenido</label>

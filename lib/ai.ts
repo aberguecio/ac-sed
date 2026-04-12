@@ -123,29 +123,18 @@ export async function generateMatchNews(
     }
   }
 
-  // Build streak info from previous matches
+  // Build previous matches context
   let streakInfo = ''
   if (previousMatches.length > 0) {
-    const streak = previousMatches.map(m => {
+    const matchSummaries = previousMatches.map(m => {
       const isHomeMatch = m.homeTeam.toUpperCase().includes('AC SED') || m.homeTeam.toUpperCase().includes('ACSED')
       const our = (isHomeMatch ? m.homeScore : m.awayScore) ?? 0
       const their = (isHomeMatch ? m.awayScore : m.homeScore) ?? 0
-      return our > their ? 'victoria' : our < their ? 'derrota' : 'empate'
+      const rivalName = isHomeMatch ? m.awayTeam : m.homeTeam
+      const resultLabel = our > their ? 'victoria' : our < their ? 'derrota' : 'empate'
+      return `${resultLabel} ${our}-${their} vs ${rivalName}`
     })
-    const last = streak[streak.length - 1]
-    const streakLabel = streak.map(s => s === 'victoria' ? 'V' : s === 'derrota' ? 'D' : 'E').join('-')
-    let consecutive = 0
-    for (let i = streak.length - 1; i >= 0; i--) {
-      if (streak[i] === last) consecutive++
-      else break
-    }
-    const description =
-      last === 'victoria'
-        ? `${consecutive} victoria(s) consecutiva(s)`
-        : last === 'derrota'
-          ? `${consecutive} derrota(s) consecutiva(s)`
-          : `${consecutive} empate(s) consecutivo(s)`
-    streakInfo = `\n- Partidos previos en esta fase (${previousMatches.length}): ${streakLabel} — Racha: ${description}`
+    streakInfo = `\n- Partidos anteriores en esta fase: ${matchSummaries.join(' | ')}`
   }
 
   // Build standings info
