@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 interface Article {
   id: number
@@ -10,12 +10,14 @@ interface Article {
   featured: boolean
   generatedAt: string
   aiProvider: string
+  emailSentAt: string | null
 }
 
 interface ArticleDetail {
   id: number
   title: string
   content: string
+  imageUrl: string | null
   generatedAt: string
   match: { date: string } | null
 }
@@ -39,8 +41,16 @@ export default function AdminNewsPage() {
   const [editTitle, setEditTitle] = useState('')
   const [editContent, setEditContent] = useState('')
   const [editDate, setEditDate] = useState('')
+  const [editImageUrl, setEditImageUrl] = useState<string | null>(null)
   const [editLoading, setEditLoading] = useState(false)
   const [editSaving, setEditSaving] = useState(false)
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [uploadingImage, setUploadingImage] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const [sendingId, setSendingId] = useState<number | null>(null)
+  const [sendResult, setSendResult] = useState<{ id: number; sent: number } | null>(null)
 
   async function fetchArticles() {
     const res = await fetch('/api/news?all=true&perPage=50')
@@ -77,21 +87,57 @@ export default function AdminNewsPage() {
     setActionId(null)
   }
 
+  async function sendNewsletter(article: Article) {
+    if (!confirm(`¿Enviar esta noticia por email a todos los suscriptores?\n\n"${article.title}"`)) return
+    setSendingId(article.id)
+    const res = await fetch(`/api/news/${article.id}/send`, { method: 'POST' })
+    const data = await res.json()
+    setSendResult({ id: article.id, sent: data.sent ?? 0 })
+    await fetchArticles()
+    setSendingId(null)
+  }
+
   async function openEdit(id: number) {
     setEditLoading(true)
-    setEditingArticle({ id, title: '', content: '', generatedAt: '', match: null })
+    setImageFile(null)
+    setImagePreview(null)
+    setEditingArticle({ id, title: '', content: '', imageUrl: null, generatedAt: '', match: null })
     const res = await fetch(`/api/news/${id}`)
     const data: ArticleDetail = await res.json()
     setEditTitle(data.title)
     setEditContent(data.content)
     setEditDate(toDateInputValue(data.generatedAt))
+    setEditImageUrl(data.imageUrl ?? null)
     setEditingArticle(data)
     setEditLoading(false)
+  }
+
+  function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setImageFile(file)
+    setImagePreview(URL.createObjectURL(file))
   }
 
   async function saveEdit() {
     if (!editingArticle) return
     setEditSaving(true)
+
+    let imageUrl = editImageUrl
+
+    if (imageFile) {
+      setUploadingImage(true)
+      const formData = new FormData()
+      formData.append('file', imageFile)
+      formData.append('articleId', String(editingArticle.id))
+      const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData })
+      if (uploadRes.ok) {
+        const uploadData = await uploadRes.json()
+        imageUrl = uploadData.url
+      }
+      setUploadingImage(false)
+    }
+
     await fetch(`/api/news/${editingArticle.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -99,16 +145,28 @@ export default function AdminNewsPage() {
         title: editTitle,
         content: editContent,
         generatedAt: new Date(editDate).toISOString(),
+        imageUrl,
       }),
     })
     setEditingArticle(null)
     setEditSaving(false)
+    setImageFile(null)
+    setImagePreview(null)
     await fetchArticles()
   }
 
   return (
     <div className="p-8">
       <h1 className="text-2xl font-extrabold text-navy mb-8">Noticias</h1>
+
+      {sendResult && (
+        <div className="mb-4 bg-green-50 border border-green-200 rounded-lg px-4 py-3 flex items-center justify-between">
+          <p className="text-green-700 text-sm font-medium">
+            Newsletter enviado a <strong>{sendResult.sent}</strong> suscriptor{sendResult.sent !== 1 ? 'es' : ''}.
+          </p>
+          <button onClick={() => setSendResult(null)} className="text-green-400 hover:text-green-600 text-lg leading-none">×</button>
+        </div>
+      )}
 
       {loading ? (
         <p className="text-gray-400">Cargando…</p>
@@ -142,7 +200,7 @@ export default function AdminNewsPage() {
                   </td>
                   <td className="px-4 py-3 text-gray-400 text-xs">{a.aiProvider}</td>
                   <td className="px-4 py-3">
-                    <div className="flex justify-end gap-2">
+                    <div className="flex justify-end gap-2 flex-wrap">
                       <button
                         onClick={() => togglePublish(a)}
                         disabled={actionId === a.id}
@@ -157,6 +215,24 @@ export default function AdminNewsPage() {
                       >
                         Editar
                       </button>
+                      {a.published && (
+                        a.emailSentAt ? (
+                          <span
+                            title={`Enviado el ${new Date(a.emailSentAt).toLocaleDateString('es-CL')}`}
+                            className="text-xs px-3 py-1.5 rounded bg-gray-100 text-gray-400 cursor-default"
+                          >
+                            Enviado ✓
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => sendNewsletter(a)}
+                            disabled={sendingId === a.id || actionId === a.id}
+                            className="text-xs px-3 py-1.5 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40"
+                          >
+                            {sendingId === a.id ? 'Enviando…' : 'Enviar newsletter'}
+                          </button>
+                        )
+                      )}
                       <button
                         onClick={() => regenerate(a.id)}
                         disabled={actionId === a.id}
@@ -236,6 +312,42 @@ export default function AdminNewsPage() {
                     )}
                   </div>
                 </div>
+
+                {/* Image upload */}
+                <div>
+                  <label className="block text-sm font-semibold text-navy mb-1">Imagen</label>
+                  {(imagePreview ?? editImageUrl) && (
+                    <div className="mb-2 relative inline-block">
+                      <img
+                        src={imagePreview ?? editImageUrl!}
+                        alt="Vista previa"
+                        className="h-40 rounded-lg object-cover border border-gray-200"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setImageFile(null)
+                          setImagePreview(null)
+                          setEditImageUrl(null)
+                          if (fileInputRef.current) fileInputRef.current.value = ''
+                        }}
+                        className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center hover:bg-red-600"
+                        title="Quitar imagen"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  )}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={handleImageChange}
+                    className="block text-sm text-gray-500 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-wheat file:text-navy hover:file:bg-wheat-light"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">JPG, PNG o WebP · máx. 5MB</p>
+                </div>
+
                 <div>
                   <label className="block text-sm font-semibold text-navy mb-1">Contenido</label>
                   <textarea
@@ -261,7 +373,7 @@ export default function AdminNewsPage() {
                 disabled={editSaving || editLoading}
                 className="text-xs px-4 py-2 rounded bg-navy text-cream hover:bg-navy-light disabled:opacity-40"
               >
-                {editSaving ? 'Guardando…' : 'Guardar'}
+                {uploadingImage ? 'Subiendo imagen…' : editSaving ? 'Guardando…' : 'Guardar'}
               </button>
             </div>
           </div>

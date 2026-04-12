@@ -93,16 +93,26 @@ model ScrapedPlayer {
 }
 
 model NewsArticle {
-  id          Int      @id @default(autoincrement())
+  id          Int       @id @default(autoincrement())
   title       String
-  slug        String   @unique
+  slug        String    @unique
   content     String
+  imageUrl    String?
   matchId     Int?
   aiProvider  String
-  generatedAt DateTime @default(now())
-  published   Boolean  @default(false)
-  featured    Boolean  @default(false)
-  match       Match?   @relation(fields: [matchId], references: [id], onDelete: SetNull)
+  generatedAt DateTime  @default(now())
+  published   Boolean   @default(false)
+  featured    Boolean   @default(false)
+  emailSentAt DateTime?
+  match       Match?    @relation(fields: [matchId], references: [id], onDelete: SetNull)
+}
+
+model NewsletterSubscriber {
+  id               Int      @id @default(autoincrement())
+  email            String   @unique
+  unsubscribeToken String   @unique @default(cuid())
+  subscribedAt     DateTime @default(now())
+  active           Boolean  @default(true)
 }
 
 model ScrapeLog {

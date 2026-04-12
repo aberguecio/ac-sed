@@ -16,7 +16,17 @@ export function NewsCard({ article }: Props) {
   return (
     <Link href={`/news/${article.slug}`} className="group block">
       <article className="bg-white rounded-xl shadow-sm border border-cream-dark/30 overflow-hidden h-full hover:shadow-md transition-shadow">
-        <div className="bg-navy h-2" />
+        {article.imageUrl ? (
+          <div className="h-44 overflow-hidden">
+            <img
+              src={article.imageUrl}
+              alt={article.title}
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            />
+          </div>
+        ) : (
+          <div className="bg-navy h-2" />
+        )}
         <div className="p-5">
           <p className="text-xs text-wheat font-medium uppercase tracking-wider mb-2">{date}</p>
           <h3 className="text-navy font-bold text-lg leading-snug mb-3 group-hover:text-navy-light transition-colors line-clamp-2">

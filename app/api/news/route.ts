@@ -14,6 +14,10 @@ export async function GET(req: NextRequest) {
       orderBy: { generatedAt: 'desc' },
       skip: (page - 1) * perPage,
       take: perPage,
+      select: {
+        id: true, title: true, slug: true, published: true, featured: true,
+        generatedAt: true, aiProvider: true, imageUrl: true, emailSentAt: true,
+      },
     }),
     prisma.newsArticle.count({ where }),
   ])
