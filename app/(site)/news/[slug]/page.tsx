@@ -40,6 +40,13 @@ export default async function NewsDetailPage({ params }: Props) {
         <header className="mb-8">
           <p className="text-wheat text-sm font-medium uppercase tracking-wider mb-3">{date}</p>
           <h1 className="text-3xl md:text-4xl font-extrabold text-navy leading-tight mb-4">{article.title}</h1>
+          {article.imageUrl && (
+            <img
+              src={article.imageUrl}
+              alt={article.title}
+              className="w-full rounded-xl object-cover max-h-96 mb-6 shadow-sm"
+            />
+          )}
           {article.match && (
             <div className="bg-navy text-cream rounded-xl px-5 py-3 inline-flex items-center gap-3 text-sm">
               <span className="font-bold">{article.match.homeTeam}</span>

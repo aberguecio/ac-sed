@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db'
 import { NewsCard } from '@/components/news-card'
+import { NewsletterSignup } from '@/components/newsletter-signup'
 import Link from 'next/link'
 import type { Metadata } from 'next'
 
@@ -33,7 +34,8 @@ export default async function NewsPage({ searchParams }: Props) {
 
       {articles.length === 0 ? (
         <div className="text-center py-20">
-          <p className="text-gray-400 text-lg">No hay noticias publicadas aún.</p>
+          <p className="text-gray-400 text-lg mb-10">No hay noticias publicadas aún.</p>
+          <NewsletterSignup />
         </div>
       ) : (
         <>
@@ -41,6 +43,11 @@ export default async function NewsPage({ searchParams }: Props) {
             {articles.map((article) => (
               <NewsCard key={article.id} article={article} />
             ))}
+          </div>
+
+          {/* Newsletter signup */}
+          <div className="mt-12">
+            <NewsletterSignup />
           </div>
 
           {/* Pagination */}
