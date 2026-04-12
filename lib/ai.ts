@@ -1,16 +1,23 @@
 import { generateText } from 'ai'
-import { openai } from '@ai-sdk/openai'
-import { anthropic } from '@ai-sdk/anthropic'
+import { openai, createOpenAI } from '@ai-sdk/openai'
 import type { Match } from '@prisma/client'
 
 function getModel() {
-  const provider = process.env.AI_PROVIDER ?? 'openai'
-  const model = process.env.AI_MODEL
+  const model = process.env.AI_MODEL ?? 'gpt-4o-mini'
+  const apiKey = process.env.AI_API_KEY
+  const baseURL = process.env.AI_BASE_URL
 
-  if (provider === 'anthropic') {
-    return anthropic(model ?? 'claude-haiku-4-5-20251001')
+  // Custom endpoint (LiteLLM, vLLM, LocalAI, etc.)
+  if (baseURL) {
+    const customProvider = createOpenAI({
+      baseURL,
+      apiKey: apiKey ?? 'dummy-key',
+    })
+    return customProvider(model)
   }
-  return openai(model ?? 'gpt-4o-mini')
+
+  // Default OpenAI
+  return openai(model)
 }
 
 export async function generateMatchNews(

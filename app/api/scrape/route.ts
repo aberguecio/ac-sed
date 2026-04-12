@@ -4,9 +4,13 @@ import { generateMatchNews } from '@/lib/ai'
 import { prisma } from '@/lib/db'
 import slugify from 'slugify'
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
-    const { newMatches, logId } = await runScraper('manual')
+    const body = await request.json().catch(() => ({}))
+    const { tournamentId, stageId } = body
+
+    const options = tournamentId && stageId ? { tournamentId, stageId } : undefined
+    const { newMatches, logId } = await runScraper('manual', options)
 
     const articles = []
     for (const match of newMatches) {

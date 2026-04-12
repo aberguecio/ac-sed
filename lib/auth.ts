@@ -21,4 +21,5 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     signIn: '/admin/login',
   },
   session: { strategy: 'jwt' },
+  trustHost: true,
 })

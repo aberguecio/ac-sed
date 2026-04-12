@@ -29,7 +29,7 @@ WORKDIR /app
 
 # Install dependencies
 COPY package*.json ./
-RUN npm ci --only=production && npm cache clean --force
+RUN npm install && npm cache clean --force
 
 # Generate Prisma client
 COPY prisma ./prisma
@@ -37,11 +37,21 @@ RUN npx prisma generate
 
 # Build Next.js app
 COPY . .
+ENV SKIP_ENV_VALIDATION=1
 RUN npm run build
+
+# Copy static files for standalone mode
+RUN cp -r .next/static .next/standalone/.next/ && \
+    if [ -d public ]; then cp -r public .next/standalone/; fi && \
+    cp -r prisma .next/standalone/
+
+# Remove dev dependencies after build
+RUN npm prune --omit=dev
 
 EXPOSE 3000
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
-CMD ["node", ".next/standalone/server.js"]
+WORKDIR /app/.next/standalone
+CMD ["sh", "-c", "npx prisma db push && node server.js"]

@@ -1,9 +1,10 @@
-import { chromium } from 'playwright'
 import { prisma } from './db'
 import type { Match } from '@prisma/client'
 
+const ACSED_TEAM_ID = 2836 // AC SED team ID
 const ACSED_TEAM = 'ACSED'
-const LIGAB_URL = 'https://ligab.cl'
+const LIGAB_API = 'https://api.ligab.cl/v1'
+const LEAGUE_ID = 24 // Liga B ID
 
 interface RawStanding {
   team?: string
@@ -101,7 +102,16 @@ function detectDataType(url: string, body: unknown): 'standings' | 'results' | '
   return null
 }
 
-export async function runScraper(triggeredBy: 'manual' | 'scheduler'): Promise<{
+async function fetchAPI(endpoint: string) {
+  const res = await fetch(`${LIGAB_API}${endpoint}`)
+  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  return res.json()
+}
+
+export async function runScraper(
+  triggeredBy: 'manual' | 'scheduler',
+  options?: { tournamentId?: number; stageId?: number }
+): Promise<{
   newMatches: Match[]
   logId: number
 }> {
@@ -109,93 +119,131 @@ export async function runScraper(triggeredBy: 'manual' | 'scheduler'): Promise<{
     data: { status: 'running', triggeredBy },
   })
 
-  const capturedData: { type: string; data: unknown[] }[] = []
-
   try {
-    const browser = await chromium.launch({ headless: true })
-    const context = await browser.newContext({
-      userAgent:
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    })
-    const page = await context.newPage()
+    let tournamentId: number
+    let stageId: number
 
-    page.on('response', async (response) => {
-      const url = response.url()
-      if (!url.includes('api') && !url.includes('.json')) return
-      try {
-        const body = await response.json()
-        const dataArray = Array.isArray(body) ? body : body?.data ?? body?.items ?? null
-        if (!dataArray) return
-        const type = detectDataType(url, dataArray)
-        if (type) capturedData.push({ type, data: dataArray })
-      } catch {
-        // not JSON
-      }
-    })
+    // Si se proveen opciones, usar esos valores
+    if (options?.tournamentId && options?.stageId) {
+      tournamentId = options.tournamentId
+      stageId = options.stageId
+    } else {
+      // Get active tournament and stages
+      const tournamentsRes = await fetchAPI(`/leagues/${LEAGUE_ID}/tournaments?filter={"include":[{"relation":"stages"}]}`)
+      const tournaments = Array.isArray(tournamentsRes) ? tournamentsRes : []
+      const activeTournament = tournaments.find((t: any) => t.isActive) || tournaments[tournaments.length - 1]
 
-    await page.goto(LIGAB_URL, { waitUntil: 'networkidle', timeout: 60000 })
+      if (!activeTournament) throw new Error('No tournaments found')
 
-    // Click through tabs to trigger API calls
-    const tabSelectors = [
-      '[data-tab="posiciones"], [href*="posiciones"], button:has-text("Posiciones")',
-      '[data-tab="resultados"], [href*="resultados"], button:has-text("Resultados")',
-      '[data-tab="goleadores"], [href*="goleadores"], button:has-text("Goleadores")',
-      '[data-tab="proximos"], [href*="proximos"], button:has-text("Próximos")',
-    ]
+      const activeStage = activeTournament.stages?.find((s: any) => s.isActive) || activeTournament.stages?.[0]
+      if (!activeStage) throw new Error('No active stage found')
 
-    for (const selector of tabSelectors) {
-      try {
-        const el = page.locator(selector).first()
-        if (await el.isVisible({ timeout: 3000 })) {
-          await el.click()
-          await page.waitForTimeout(2000)
-        }
-      } catch {
-        // tab not found, continue
+      tournamentId = activeTournament.id
+      stageId = activeStage.id
+    }
+
+    // Get groups for this stage
+    const groups = await fetchAPI(`/stages/${stageId}/groups`)
+    const allGroupIds = Array.isArray(groups) ? groups.map((g: any) => g.id) : []
+
+    // Find AC SED's group
+    let acsedGroupId: number | null = null
+    for (const groupId of allGroupIds) {
+      const standings = await fetchAPI(`/groups/${groupId}/standings`).catch(() => [])
+      const hasAcSed = standings.some((s: any) => s.team?.id === ACSED_TEAM_ID)
+      if (hasAcSed) {
+        acsedGroupId = groupId
+        break
       }
     }
 
-    await browser.close()
+    if (!acsedGroupId) {
+      throw new Error('AC SED not found in any group for this stage')
+    }
 
-    // Process standings
-    const standingsData = capturedData.find((d) => d.type === 'standings')
-    if (standingsData) {
+    console.log(`✓ AC SED found in group ${acsedGroupId}`)
+
+    // Only fetch data for AC SED's group
+    const [standings, matchDays, topScorers] = await Promise.all([
+      fetchAPI(`/groups/${acsedGroupId}/standings`).catch(() => []),
+      fetchAPI(`/stages/${stageId}/match-days?filter={"include":[{"relation":"matches","scope":{"include":[{"relation":"homeTeam"},{"relation":"awayTeam"},{"relation":"matchSchedule"},{"relation":"group"}],"where":{"groupId":${acsedGroupId}}}}]}`).catch(() => []),
+      fetchAPI(`/tournaments/${tournamentId}/top-scorers`).catch(() => []),
+    ])
+
+    // Process standings from AC SED's group only
+    if (Array.isArray(standings) && standings.length > 0) {
       await prisma.standing.deleteMany()
-      await prisma.standing.createMany({
-        data: (standingsData.data as RawStanding[]).map(normalizeStanding),
-      })
+      const standingsData = standings.map((s: any) => ({
+        teamName: s.team?.name || 'Unknown',
+        position: s.team?.id === ACSED_TEAM_ID ? 1 : 99, // Priorizar AC SED
+        played: s.played || 0,
+        won: s.won || 0,
+        drawn: s.drawn || 0,
+        lost: s.lost || 0,
+        goalsFor: s.goalsFor || 0,
+        goalsAgainst: s.goalsAgainst || 0,
+        points: s.points || 0,
+      }))
+      // Ordenar por puntos
+      standingsData.sort((a, b) => b.points - a.points)
+      // Asignar posiciones correctas
+      standingsData.forEach((s, i) => (s.position = i + 1))
+      await prisma.standing.createMany({ data: standingsData })
     }
 
-    // Process scorers
-    const scorersData = capturedData.find((d) => d.type === 'scorers')
-    if (scorersData) {
+    // Process top scorers
+    if (Array.isArray(topScorers) && topScorers.length > 0) {
       await prisma.leagueScorer.deleteMany()
-      await prisma.leagueScorer.createMany({
-        data: (scorersData.data as RawScorer[]).map(normalizeScorer),
-      })
+      const scorersData = topScorers.map((s: any) => ({
+        playerName: s.player?.name || s.playerName || 'Unknown',
+        teamName: s.team?.name || s.teamName || 'Unknown',
+        goals: s.goals || 0,
+      }))
+      await prisma.leagueScorer.createMany({ data: scorersData })
     }
 
-    // Process results — upsert by leagueMatchId
-    const resultsData = capturedData.find((d) => d.type === 'results')
+    // Process matches from all match days
     const newMatches: Match[] = []
-    if (resultsData) {
-      for (const raw of resultsData.data as RawResult[]) {
-        const normalized = normalizeResult(raw)
-        if (!normalized.leagueMatchId) continue
+    const allMatches = Array.isArray(matchDays)
+      ? matchDays.flatMap((md: any) => md.matches || [])
+      : []
 
-        const existing = await prisma.match.findUnique({
-          where: { leagueMatchId: normalized.leagueMatchId },
-        })
-        if (!existing) {
-          const created = await prisma.match.create({ data: normalized })
-          // Only consider ACSED matches as "new" for news generation
-          if (
-            created.homeTeam.toUpperCase().includes(ACSED_TEAM) ||
-            created.awayTeam.toUpperCase().includes(ACSED_TEAM)
-          ) {
-            newMatches.push(created)
-          }
+    for (const match of allMatches) {
+      const matchId = String(match.id)
+      const homeTeam = match.homeTeam?.name || 'Unknown'
+      const awayTeam = match.awayTeam?.name || 'Unknown'
+
+      const matchData = {
+        homeTeam,
+        awayTeam,
+        homeScore: match.homeScore,
+        awayScore: match.awayScore,
+        date: match.matchSchedule?.schedule ? new Date() : new Date(),
+        roundName: match.group?.name || null,
+        leagueMatchId: matchId,
+      }
+
+      const existing = await prisma.match.findUnique({
+        where: { leagueMatchId: matchId },
+      })
+
+      if (!existing) {
+        const created = await prisma.match.create({ data: matchData })
+        if (
+          homeTeam.toUpperCase().includes(ACSED_TEAM) ||
+          awayTeam.toUpperCase().includes(ACSED_TEAM)
+        ) {
+          newMatches.push(created)
         }
+      } else if (
+        existing.homeScore !== match.homeScore ||
+        existing.awayScore !== match.awayScore
+      ) {
+        // Update if scores changed
+        await prisma.match.update({
+          where: { leagueMatchId: matchId },
+          data: { homeScore: match.homeScore, awayScore: match.awayScore },
+        })
       }
     }
 

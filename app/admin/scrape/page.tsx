@@ -12,10 +12,19 @@ interface ScrapeLog {
   triggeredBy: string
 }
 
+const TOURNAMENTS = [
+  { id: 0, name: 'Torneo Activo (Automático)', stageId: 0 },
+  { id: 191, name: 'Clausura 2025', stageId: 384 },
+  { id: 178, name: 'Apertura 2025', stageId: 360 },
+  { id: 172, name: 'Clausura 2024', stageId: 335 },
+  { id: 160, name: 'Apertura 2024', stageId: 307 },
+]
+
 export default function AdminScrapePage() {
   const [logs, setLogs] = useState<ScrapeLog[]>([])
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [selectedTournament, setSelectedTournament] = useState(0)
 
   async function fetchLogs() {
     const res = await fetch('/api/scrape/logs')
@@ -31,12 +40,21 @@ export default function AdminScrapePage() {
     setLoading(true)
     setMessage(null)
     try {
-      const res = await fetch('/api/scrape', { method: 'POST' })
+      const tournament = TOURNAMENTS.find(t => t.id === selectedTournament)
+      const body = tournament?.id === 0
+        ? {}
+        : { tournamentId: tournament?.id, stageId: tournament?.stageId }
+
+      const res = await fetch('/api/scrape', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
       const data = await res.json()
       if (res.ok) {
         setMessage({
           type: 'success',
-          text: `Scrape completado. ${data.newMatches} partidos nuevos. ${data.articlesGenerated} noticias generadas.`,
+          text: `Scrape completado. ${data.newMatches} partidos nuevos. ${data.articlesGenerated || 0} noticias generadas.`,
         })
         await fetchLogs()
       } else {
@@ -56,23 +74,41 @@ export default function AdminScrapePage() {
         El scraper automático corre todos los lunes a las 8:00 AM (hora Chile).
       </p>
 
-      <button
-        onClick={handleScrape}
-        disabled={loading}
-        className="bg-navy text-cream px-6 py-3 rounded-lg font-semibold hover:bg-navy-light transition-colors disabled:opacity-50 flex items-center gap-2"
-      >
-        {loading ? (
-          <>
-            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-            </svg>
-            Scrapeando… (puede tardar ~60s)
-          </>
-        ) : (
-          '🔄 Ejecutar Scrape'
-        )}
-      </button>
+      <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6">
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Seleccionar Torneo
+        </label>
+        <select
+          value={selectedTournament}
+          onChange={(e) => setSelectedTournament(Number(e.target.value))}
+          className="w-full border border-gray-300 rounded-lg px-4 py-2 mb-4 focus:outline-none focus:ring-2 focus:ring-navy"
+          disabled={loading}
+        >
+          {TOURNAMENTS.map((tournament) => (
+            <option key={tournament.id} value={tournament.id}>
+              {tournament.name}
+            </option>
+          ))}
+        </select>
+
+        <button
+          onClick={handleScrape}
+          disabled={loading}
+          className="bg-navy text-cream px-6 py-3 rounded-lg font-semibold hover:bg-navy-light transition-colors disabled:opacity-50 flex items-center gap-2"
+        >
+          {loading ? (
+            <>
+              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+              </svg>
+              Scrapeando… (puede tardar ~60s)
+            </>
+          ) : (
+            '🔄 Ejecutar Scrape'
+          )}
+        </button>
+      </div>
 
       {message && (
         <div className={`mt-4 rounded-lg px-4 py-3 text-sm ${message.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
