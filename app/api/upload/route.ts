@@ -21,10 +21,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'El archivo supera los 5MB' }, { status: 400 })
   }
 
+  const playerId = formData.get('playerId') as string | null
+
   const buffer = Buffer.from(await file.arrayBuffer())
   const ext = file.type.split('/')[1]
   const timestamp = Date.now()
-  const prefix = articleId ? `news/${articleId}` : 'news/general'
+  let prefix: string
+  if (playerId) {
+    prefix = `players/${playerId}`
+  } else if (articleId) {
+    prefix = `news/${articleId}`
+  } else {
+    prefix = 'news/general'
+  }
   const key = `${prefix}/${timestamp}.${ext}`
 
   const url = await uploadImageToS3(buffer, key, file.type)
