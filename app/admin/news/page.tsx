@@ -20,6 +20,18 @@ interface ArticleDetail {
   imageUrl: string | null
   generatedAt: string
   match: { date: string } | null
+  aiContext?: {
+    matchDate: string
+    matchInfo: string
+    previousMatchesCount: number
+    previousMatches: Array<{ date: string; match: string }>
+    upcomingMatchesCount: number
+    upcomingMatches: Array<{ date: string; match: string }>
+    standingsCount: number
+    standings: string[]
+    otherResultsCount: number
+    otherResults: string[]
+  }
 }
 
 function toDateInputValue(isoString: string) {
@@ -395,6 +407,78 @@ export default function AdminNewsPage() {
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-navy/30"
                   />
                 </div>
+
+                {/* AI Context Debug */}
+                {editingArticle.aiContext && (
+                  <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                    <h3 className="text-sm font-semibold text-gray-700">Contexto IA (Debug)</h3>
+
+                    <div className="text-xs text-gray-600 space-y-2">
+                      <div>
+                        <span className="font-medium">Partido:</span> {editingArticle.aiContext.matchInfo}
+                      </div>
+                      <div>
+                        <span className="font-medium">Fecha:</span> {editingArticle.aiContext.matchDate}
+                      </div>
+
+                      {editingArticle.aiContext.previousMatchesCount > 0 && (
+                        <details className="border-t pt-2">
+                          <summary className="font-medium cursor-pointer">
+                            Partidos anteriores ({editingArticle.aiContext.previousMatchesCount})
+                          </summary>
+                          <div className="mt-1 pl-3 space-y-0.5">
+                            {editingArticle.aiContext.previousMatches.map((m, i) => (
+                              <div key={i} className="text-gray-500">
+                                {m.date}: {m.match}
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
+
+                      {editingArticle.aiContext.upcomingMatchesCount > 0 && (
+                        <details className="border-t pt-2">
+                          <summary className="font-medium cursor-pointer">
+                            Próximos partidos ({editingArticle.aiContext.upcomingMatchesCount})
+                          </summary>
+                          <div className="mt-1 pl-3 space-y-0.5">
+                            {editingArticle.aiContext.upcomingMatches.map((m, i) => (
+                              <div key={i} className="text-gray-500">
+                                {m.date}: {m.match}
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
+
+                      {editingArticle.aiContext.standingsCount > 0 && (
+                        <details className="border-t pt-2">
+                          <summary className="font-medium cursor-pointer">
+                            Tabla de posiciones ({editingArticle.aiContext.standingsCount})
+                          </summary>
+                          <div className="mt-1 pl-3 space-y-0.5">
+                            {editingArticle.aiContext.standings.map((s, i) => (
+                              <div key={i} className="text-gray-500">{s}</div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
+
+                      {editingArticle.aiContext.otherResultsCount > 0 && (
+                        <details className="border-t pt-2">
+                          <summary className="font-medium cursor-pointer">
+                            Otros resultados ({editingArticle.aiContext.otherResultsCount})
+                          </summary>
+                          <div className="mt-1 pl-3 space-y-0.5">
+                            {editingArticle.aiContext.otherResults.map((r, i) => (
+                              <div key={i} className="text-gray-500">{r}</div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

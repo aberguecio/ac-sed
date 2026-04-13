@@ -21,6 +21,201 @@ function getModel() {
   return openai(model)
 }
 
+// Export this function to reuse in other parts of the app
+export async function getMatchContext(match: Match) {
+  const hasPhaseContext = match.tournamentId !== null && match.stageId !== null
+  const hasGroupContext = hasPhaseContext && match.groupId !== null
+
+  // Fetch all context data in parallel
+  const [goals, cards, previousMatches, upcomingMatches, otherMatchesInRound] = await Promise.all([
+    prisma.matchGoal.findMany({
+      where: { matchId: match.id },
+      include: { scrapedPlayer: true }
+    }),
+    prisma.matchCard.findMany({
+      where: { matchId: match.id },
+      include: { scrapedPlayer: true }
+    }),
+    // Previous played matches BEFORE this match's date
+    hasPhaseContext
+      ? prisma.match.findMany({
+          where: {
+            tournamentId: match.tournamentId!,
+            stageId: match.stageId!,
+            OR: [
+              { homeTeam: { contains: 'AC SED', mode: 'insensitive' } },
+              { awayTeam: { contains: 'AC SED', mode: 'insensitive' } },
+            ],
+            homeScore: { not: null },
+            id: { not: match.id },
+            date: { lt: match.date },
+          },
+          orderBy: { date: 'asc' },
+        })
+      : Promise.resolve([]),
+    // Upcoming matches AFTER this match's date
+    hasPhaseContext
+      ? prisma.match.findMany({
+          where: {
+            tournamentId: match.tournamentId!,
+            stageId: match.stageId!,
+            OR: [
+              { homeTeam: { contains: 'AC SED', mode: 'insensitive' } },
+              { awayTeam: { contains: 'AC SED', mode: 'insensitive' } },
+            ],
+            date: { gt: match.date },
+          },
+          orderBy: { date: 'asc' },
+          select: {
+            id: true,
+            homeTeam: true,
+            awayTeam: true,
+            date: true,
+            // Don't select scores - we want to hide results from AI
+          },
+        })
+      : Promise.resolve([]),
+    // Other matches in the same round (for relevant teams ±1 position)
+    hasGroupContext
+      ? prisma.match.findMany({
+          where: {
+            tournamentId: match.tournamentId!,
+            stageId: match.stageId!,
+            groupId: match.groupId!,
+            id: { not: match.id },
+            date: {
+              gte: new Date(match.date.getTime() - 3 * 24 * 60 * 60 * 1000), // -3 days
+              lte: new Date(match.date.getTime() + 3 * 24 * 60 * 60 * 1000), // +3 days
+            },
+            homeScore: { not: null }, // Only played matches
+          },
+          select: {
+            homeTeam: true,
+            awayTeam: true,
+            homeScore: true,
+            awayScore: true,
+            date: true,
+          },
+        })
+      : Promise.resolve([]),
+  ])
+
+  // Calculate standings based on matches played up to this point in time
+  let standingsRows: any[] = []
+  if (hasGroupContext) {
+    // Get all teams in the group from the stored standings
+    const storedStandings = await prisma.standing.findMany({
+      where: {
+        tournamentId: match.tournamentId!,
+        stageId: match.stageId!,
+        groupId: match.groupId!,
+      },
+      select: { teamName: true },
+    })
+
+    // Get all matches played in this group up to and including this match date
+    const groupMatches = await prisma.match.findMany({
+      where: {
+        tournamentId: match.tournamentId!,
+        stageId: match.stageId!,
+        groupId: match.groupId!,
+        date: { lte: match.date },
+        homeScore: { not: null }, // Only count played matches
+      },
+      select: {
+        homeTeam: true,
+        awayTeam: true,
+        homeScore: true,
+        awayScore: true,
+      },
+    })
+
+    // Calculate standings manually based on matches played up to this date
+    const teamStats = new Map<string, { points: number; won: number; drawn: number; lost: number; gf: number; ga: number }>()
+
+    // Initialize all teams with zero stats
+    for (const standing of storedStandings) {
+      teamStats.set(standing.teamName, { points: 0, won: 0, drawn: 0, lost: 0, gf: 0, ga: 0 })
+    }
+
+    // Calculate stats from matches
+    for (const m of groupMatches) {
+      const homeScore = m.homeScore ?? 0
+      const awayScore = m.awayScore ?? 0
+
+      // Initialize teams if not in stored standings (shouldn't happen, but safe)
+      if (!teamStats.has(m.homeTeam)) {
+        teamStats.set(m.homeTeam, { points: 0, won: 0, drawn: 0, lost: 0, gf: 0, ga: 0 })
+      }
+      if (!teamStats.has(m.awayTeam)) {
+        teamStats.set(m.awayTeam, { points: 0, won: 0, drawn: 0, lost: 0, gf: 0, ga: 0 })
+      }
+
+      const homeStats = teamStats.get(m.homeTeam)!
+      const awayStats = teamStats.get(m.awayTeam)!
+
+      // Update goals
+      homeStats.gf += homeScore
+      homeStats.ga += awayScore
+      awayStats.gf += awayScore
+      awayStats.ga += homeScore
+
+      // Update results and points
+      if (homeScore > awayScore) {
+        homeStats.won++
+        homeStats.points += 3
+        awayStats.lost++
+      } else if (awayScore > homeScore) {
+        awayStats.won++
+        awayStats.points += 3
+        homeStats.lost++
+      } else {
+        homeStats.drawn++
+        homeStats.points += 1
+        awayStats.drawn++
+        awayStats.points += 1
+      }
+    }
+
+    // Convert to standings array and sort
+    standingsRows = Array.from(teamStats.entries()).map(([teamName, stats]) => ({
+      teamName,
+      position: 0, // Will be set after sorting
+      points: stats.points,
+      won: stats.won,
+      drawn: stats.drawn,
+      lost: stats.lost,
+      goalsFor: stats.gf,
+      goalsAgainst: stats.ga,
+      goalDifference: stats.gf - stats.ga,
+    }))
+
+    // Sort by points, then goal difference, then goals for
+    standingsRows.sort((a, b) => {
+      if (b.points !== a.points) return b.points - a.points
+      if (b.goalDifference !== a.goalDifference) return b.goalDifference - a.goalDifference
+      return b.goalsFor - a.goalsFor
+    })
+
+    // Assign positions
+    standingsRows.forEach((row, index) => {
+      row.position = index + 1
+    })
+  }
+
+  return {
+    match,
+    goals,
+    cards,
+    previousMatches,
+    standingsRows,
+    upcomingMatches,
+    otherMatchesInRound,
+    hasPhaseContext,
+    hasGroupContext,
+  }
+}
+
 export async function generateMatchNews(
   match: Match
 ): Promise<{ title: string; content: string }> {
@@ -37,62 +232,18 @@ export async function generateMatchNews(
           : 'empate'
       : 'partido'
 
-  const hasPhaseContext = match.tournamentId !== null && match.stageId !== null
-  const hasGroupContext = hasPhaseContext && match.groupId !== null
-
-  // Fetch goals, cards, and phase context in parallel
-  const [goals, cards, previousMatches, standingsRows, upcomingMatches] = await Promise.all([
-    prisma.matchGoal.findMany({
-      where: { matchId: match.id },
-      include: { scrapedPlayer: true }
-    }),
-    prisma.matchCard.findMany({
-      where: { matchId: match.id },
-      include: { scrapedPlayer: true }
-    }),
-    // A. Previous played matches in same phase (excluding current)
-    hasPhaseContext
-      ? prisma.match.findMany({
-          where: {
-            tournamentId: match.tournamentId!,
-            stageId: match.stageId!,
-            OR: [
-              { homeTeam: { contains: 'AC SED', mode: 'insensitive' } },
-              { awayTeam: { contains: 'AC SED', mode: 'insensitive' } },
-            ],
-            homeScore: { not: null },
-            id: { not: match.id },
-          },
-          orderBy: { date: 'asc' },
-        })
-      : Promise.resolve([]),
-    // B. Standings for the group
-    hasGroupContext
-      ? prisma.standing.findMany({
-          where: {
-            tournamentId: match.tournamentId!,
-            stageId: match.stageId!,
-            groupId: match.groupId!,
-          },
-          orderBy: { position: 'asc' },
-        })
-      : Promise.resolve([]),
-    // C. Upcoming matches (no score yet) in same phase
-    hasPhaseContext
-      ? prisma.match.findMany({
-          where: {
-            tournamentId: match.tournamentId!,
-            stageId: match.stageId!,
-            OR: [
-              { homeTeam: { contains: 'AC SED', mode: 'insensitive' } },
-              { awayTeam: { contains: 'AC SED', mode: 'insensitive' } },
-            ],
-            homeScore: null,
-          },
-          orderBy: { date: 'asc' },
-        })
-      : Promise.resolve([]),
-  ])
+  // Use centralized function to get all context
+  const context = await getMatchContext(match)
+  const {
+    goals,
+    cards,
+    previousMatches,
+    standingsRows,
+    upcomingMatches,
+    otherMatchesInRound,
+    hasPhaseContext,
+    hasGroupContext,
+  } = context
 
   // Format goals by team
   const acsedGoals = goals.filter(g => g.teamName.toUpperCase().includes('ACSED') || g.teamName.toUpperCase().includes('AC SED'))
@@ -156,7 +307,51 @@ export async function generateMatchNews(
     }
   }
 
-  // Build upcoming matches info
+  // Process other matches in the round (±1 position teams)
+  let otherResultsInfo = ''
+  if (otherMatchesInRound.length > 0 && standingsRows.length > 0) {
+    const acsed = standingsRows.find(s =>
+      s.teamName.toUpperCase().includes('AC SED') || s.teamName.toUpperCase().includes('ACSED')
+    )
+    if (acsed) {
+      // Get teams within ±1 position
+      const relevantTeams = standingsRows.filter(s =>
+        Math.abs(s.position - acsed.position) <= 1 &&
+        !s.teamName.toUpperCase().includes('AC SED') &&
+        !s.teamName.toUpperCase().includes('ACSED')
+      )
+
+      const relevantResults = otherMatchesInRound.filter(m =>
+        relevantTeams.some(t =>
+          m.homeTeam.includes(t.teamName) || m.awayTeam.includes(t.teamName)
+        )
+      )
+
+      if (relevantResults.length > 0) {
+        const resultsStr = relevantResults.map(m => {
+          // Find which relevant team played
+          const relevantTeam = relevantTeams.find(t =>
+            m.homeTeam.includes(t.teamName) || m.awayTeam.includes(t.teamName)
+          )
+          if (!relevantTeam) return null
+
+          const teamWon = (m.homeTeam.includes(relevantTeam.teamName) && m.homeScore! > m.awayScore!) ||
+                         (m.awayTeam.includes(relevantTeam.teamName) && m.awayScore! > m.homeScore!)
+          const teamLost = (m.homeTeam.includes(relevantTeam.teamName) && m.homeScore! < m.awayScore!) ||
+                          (m.awayTeam.includes(relevantTeam.teamName) && m.awayScore! < m.homeScore!)
+          const result = teamWon ? 'ganó' : teamLost ? 'perdió' : 'empató'
+
+          return `[${relevantTeam.position}°] ${relevantTeam.teamName} ${result} ${m.homeScore}-${m.awayScore}`
+        }).filter(Boolean).join(' | ')
+
+        if (resultsStr) {
+          otherResultsInfo = `\n- Otros resultados relevantes de la jornada: ${resultsStr}`
+        }
+      }
+    }
+  }
+
+  // Build upcoming matches info with rivals' form
   let upcomingInfo = ''
   if (hasPhaseContext) {
     const remaining = upcomingMatches.length
@@ -180,10 +375,50 @@ export async function generateMatchNews(
       } else {
         upcomingInfo = `\n- ÚLTIMO partido de la fase.`
       }
-    } else if (remaining === 1) {
-      upcomingInfo = `\n- Quedan ${remaining} partido(s) en la fase — última jornada decisiva.`
     } else {
-      upcomingInfo = `\n- Partidos restantes en la fase: ${remaining}`
+      // Show next rivals with their position
+      const nextRivals = upcomingMatches.slice(0, 2).map(m => {
+        const isHome = m.homeTeam.toUpperCase().includes('AC SED') || m.homeTeam.toUpperCase().includes('ACSED')
+        const rivalName = isHome ? m.awayTeam : m.homeTeam
+        const rivalStanding = standingsRows.find(s => s.teamName === rivalName)
+        const positionStr = rivalStanding ? ` [${rivalStanding.position}°]` : ''
+        return `${rivalName}${positionStr}`
+      })
+
+      if (remaining <= 2) {
+        // Calculate points needed for objectives
+        const acsed = standingsRows.find(s =>
+          s.teamName.toUpperCase().includes('AC SED') || s.teamName.toUpperCase().includes('ACSED')
+        )
+        if (acsed) {
+          const maxPossiblePoints = acsed.points + (remaining * 3)
+          const leader = standingsRows[0]
+          const second = standingsRows[1]
+          const thirdLast = standingsRows[standingsRows.length - 3]
+
+          let objectiveInfo = ''
+          if (acsed.position > 2 && second) {
+            const pointsNeeded = second.points - acsed.points + 1
+            if (pointsNeeded <= remaining * 3) {
+              objectiveInfo = ` Necesita ${pointsNeeded} puntos para alcanzar zona de ascenso.`
+            }
+          } else if (acsed.position === 2 && leader) {
+            const pointsForFirst = leader.points - acsed.points + 1
+            if (pointsForFirst <= remaining * 3) {
+              objectiveInfo = ` ${pointsForFirst} puntos para ser líder.`
+            }
+          } else if (acsed.position > standingsRows.length - 2 && thirdLast) {
+            const pointsToEscape = thirdLast.points - acsed.points + 1
+            objectiveInfo = ` Necesita ${pointsToEscape} puntos para salir del descenso.`
+          }
+
+          upcomingInfo = `\n- Últimos ${remaining} partidos: vs ${nextRivals.join(', ')}.${objectiveInfo}`
+        } else {
+          upcomingInfo = `\n- Próximos rivales: ${nextRivals.join(', ')} (quedan ${remaining} partidos)`
+        }
+      } else {
+        upcomingInfo = `\n- Próximos rivales: ${nextRivals.join(', ')} (quedan ${remaining} partidos)`
+      }
     }
   }
 
@@ -194,11 +429,20 @@ Datos del partido:
 - ${isHome ? 'Local' : 'Visitante'}: AC SED
 - Rival: ${rival}
 - Resultado: AC SED ${acsedScore ?? '?'} - ${rivalScore ?? '?'} ${rival}
-- ${match.roundName ? `Jornada: ${match.roundName}` : ''}${goalsInfo}${cardsInfo}${streakInfo}${standingsInfo}${upcomingInfo}
+- ${match.roundName ? `Jornada: ${match.roundName}` : ''}${goalsInfo}${cardsInfo}${streakInfo}${standingsInfo}${otherResultsInfo}${upcomingInfo}
 
 Genera:
 1. Un TÍTULO periodístico corto y atractivo (máximo 10 palabras)
-2. Una CRÓNICA de aproximadamente 300 palabras que incluya: análisis del resultado (${result}), menciona a los goleadores específicos, desempeño del equipo, importancia del partido para la tabla, contexto de la racha y clasificación si es relevante.
+2. Una CRÓNICA de aproximadamente 300 palabras que incluya:
+   - Análisis del resultado (${result}) y cómo se desarrolló el partido
+   - Menciona a los goleadores específicos si los hay
+   - Desempeño del equipo e importancia del partido para la tabla
+   - Contexto de la racha y clasificación si es relevante
+   - Si es relevante, menciona cómo afectaron otros resultados de la jornada a nuestra posición
+   - En los últimos 2 partidos de la fase, incluye cálculos de puntos necesarios para objetivos
+   - Usa el contexto de manera inteligente: NO menciones todo, solo lo que hace la historia más interesante
+
+IMPORTANTE: Solo usa información relevante para la narrativa. Si estamos en mitad de tabla sin opciones claras, no fuerces mencionar clasificación. Si otros resultados no nos afectan, no los menciones.
 
 Responde ÚNICAMENTE en este formato JSON (sin markdown):
 {"title": "...", "content": "..."}`
