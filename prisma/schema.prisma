@@ -7,6 +7,55 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Tournament {
+  id        Int      @id // Liga B API tournament ID
+  name      String
+  isActive  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  stages    Stage[]
+  matches   Match[]
+  standings Standing[]
+  scorers   LeagueScorer[]
+  analyses  TournamentAnalysis[]
+
+  @@index([isActive])
+}
+
+model Stage {
+  id           Int        @id // Liga B API stage ID
+  tournamentId Int
+  name         String?
+  orderIndex   Int        @default(0) // Para ordenar las fases
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  // Relations
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  groups       Group[]
+  matches      Match[]
+
+  @@index([tournamentId])
+  @@index([tournamentId, orderIndex])
+}
+
+model Group {
+  id        Int      @id // Liga B API group ID
+  stageId   Int
+  name      String   // "Thor", "Loki", etc.
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  stage     Stage    @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  matches   Match[]
+  standings Standing[]
+
+  @@index([stageId])
+}
+
 model Team {
   id           Int      @id // Liga B API team ID
   name         String
@@ -29,10 +78,8 @@ model Match {
   stageId       Int?
   groupId       Int?
   date          DateTime
-  homeTeam      String        // Mantener para compatibilidad
-  awayTeam      String        // Mantener para compatibilidad
-  homeTeamId    Int?          // Nueva FK
-  awayTeamId    Int?          // Nueva FK
+  homeTeamId    Int?
+  awayTeamId    Int?
   homeScore     Int?
   awayScore     Int?
   roundName     String?
@@ -43,8 +90,11 @@ model Match {
   cards         MatchCard[]
 
   // Relations
-  homeTeamRef   Team?         @relation("HomeTeam", fields: [homeTeamId], references: [id])
-  awayTeamRef   Team?         @relation("AwayTeam", fields: [awayTeamId], references: [id])
+  tournament    Tournament?   @relation(fields: [tournamentId], references: [id])
+  stage         Stage?        @relation(fields: [stageId], references: [id])
+  group         Group?        @relation(fields: [groupId], references: [id])
+  homeTeam      Team?         @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  awayTeam      Team?         @relation("AwayTeam", fields: [awayTeamId], references: [id])
 
   @@index([tournamentId, stageId, groupId])
   @@index([homeTeamId])
@@ -52,13 +102,11 @@ model Match {
 }
 
 model Standing {
-  id           Int      @id @default(autoincrement())
+  id           Int         @id @default(autoincrement())
   tournamentId Int
   stageId      Int
   groupId      Int
-  groupName    String
-  teamName     String   // Mantener para compatibilidad
-  teamId       Int?     // Nueva FK
+  teamId       Int
   position     Int
   played       Int
   won          Int
@@ -67,27 +115,29 @@ model Standing {
   goalsFor     Int
   goalsAgainst Int
   points       Int
-  updatedAt    DateTime @updatedAt
+  updatedAt    DateTime    @updatedAt
 
   // Relations
-  team         Team?    @relation(fields: [teamId], references: [id])
+  tournament   Tournament? @relation(fields: [tournamentId], references: [id])
+  group        Group?      @relation(fields: [groupId], references: [id])
+  team         Team        @relation(fields: [teamId], references: [id])
 
-  @@unique([tournamentId, stageId, groupId, teamName])
+  @@unique([tournamentId, stageId, groupId, teamId])
   @@index([tournamentId, stageId, groupId])
   @@index([teamId])
 }
 
 model LeagueScorer {
-  id           Int      @id @default(autoincrement())
+  id           Int         @id @default(autoincrement())
   tournamentId Int
   playerName   String
-  teamName     String   // Mantener para compatibilidad
-  teamId       Int?     // Nueva FK
+  teamId       Int
   goals        Int
-  updatedAt    DateTime @updatedAt
+  updatedAt    DateTime    @updatedAt
 
   // Relations
-  team         Team?    @relation(fields: [teamId], references: [id])
+  tournament   Tournament? @relation(fields: [tournamentId], references: [id])
+  team         Team        @relation(fields: [teamId], references: [id])
 
   @@index([tournamentId])
   @@index([teamId])
@@ -157,24 +207,39 @@ model NewsletterSubscriber {
 }
 
 model ScrapeLog {
-  id           Int       @id @default(autoincrement())
-  startedAt    DateTime  @default(now())
-  finishedAt   DateTime?
-  status       String
-  matchesFound Int?
-  errorMessage String?
-  triggeredBy  String
+  id              Int       @id @default(autoincrement())
+  startedAt       DateTime  @default(now())
+  finishedAt      DateTime?
+  status          String    // 'running', 'success', 'error'
+  tournamentId    Int?
+  tournamentName  String?
+  stageIds        String?   // JSON array of stage IDs processed
+  matchesFound    Int?
+  newMatches      Int?      // New matches added
+  updatedMatches  Int?      // Existing matches updated
+  teamsProcessed  Int?
+  standingsSaved  Int?
+  groupsFound     Int?
+  errorMessage    String?
+  detailedLog     String?   @db.Text // Detailed logs from console
+  triggeredBy     String
+
+  @@index([status])
+  @@index([startedAt])
 }
 
 model TournamentAnalysis {
-  id           Int      @id @default(autoincrement())
+  id           Int         @id @default(autoincrement())
   tournamentId Int
   stageId      Int
   groupId      Int
-  content      String   @db.Text
-  dataHash     String   // Hash de los datos para detectar cambios
+  content      String      @db.Text
+  dataHash     String      // Hash de los datos para detectar cambios
   aiProvider   String?
-  generatedAt  DateTime @default(now())
+  generatedAt  DateTime    @default(now())
+
+  // Relations
+  tournament   Tournament? @relation(fields: [tournamentId], references: [id])
 
   @@unique([tournamentId, stageId, groupId])
   @@index([tournamentId, stageId])
@@ -193,7 +258,7 @@ model MatchGoal {
   rosterPlayer    Player?        @relation(fields: [rosterPlayerId], references: [id], onDelete: SetNull)
   rosterPlayerId  Int?
 
-  @@unique([matchId, leaguePlayerId])
+  @@index([matchId])
   @@index([leaguePlayerId])
   @@index([rosterPlayerId])
 }

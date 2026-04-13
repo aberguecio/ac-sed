@@ -7,6 +7,15 @@ import type { Metadata } from 'next'
 export const metadata: Metadata = { title: 'Noticias — AC SED' }
 export const revalidate = 60
 
+interface PhaseGroup {
+  tournamentId: number
+  stageId: number
+  groupId: number
+  phaseName: string
+  dateRange: { start: Date; end: Date }
+  news: any[]
+}
+
 interface Props {
   searchParams: Promise<{ page?: string }>
 }
@@ -14,34 +23,138 @@ interface Props {
 export default async function NewsPage({ searchParams }: Props) {
   const { page: pageParam } = await searchParams
   const page = Math.max(1, parseInt(pageParam ?? '1'))
-  const perPage = 9
+  const phasesPerPage = 2
 
-  const [articles, total] = await Promise.all([
-    prisma.newsArticle.findMany({
-      where: { published: true },
-      orderBy: { generatedAt: 'desc' },
-      skip: (page - 1) * perPage,
-      take: perPage,
-    }),
-    prisma.newsArticle.count({ where: { published: true } }),
-  ])
+  // Get all distinct phases from matches
+  const allPhases = await prisma.match.groupBy({
+    by: ['tournamentId', 'stageId', 'groupId'],
+    orderBy: [
+      { tournamentId: 'desc' },
+      { stageId: 'desc' },
+      { groupId: 'desc' },
+    ],
+  })
 
-  const totalPages = Math.ceil(total / perPage)
+  const totalPhases = allPhases.length
+  const totalPages = Math.ceil(totalPhases / phasesPerPage)
+
+  // Get phases for current page
+  const phases = allPhases.slice((page - 1) * phasesPerPage, page * phasesPerPage)
+
+  // Helper function to get tournament name
+  function getTournamentName(tournamentId: number): string {
+    if (tournamentId === 201) return 'Apertura 2026'
+    if (tournamentId === 191) return 'Clausura 2025'
+    if (tournamentId === 178) return 'Apertura 2025'
+    if (tournamentId === 172) return 'Clausura 2024'
+    return `Torneo ${tournamentId}`
+  }
+
+  // Build phase groups with news
+  const phaseGroups: PhaseGroup[] = await Promise.all(
+    phases.map(async (phase) => {
+      // Get all matches in this phase to determine date range
+      const phaseMatches = await prisma.match.findMany({
+        where: {
+          tournamentId: phase.tournamentId,
+          stageId: phase.stageId,
+          groupId: phase.groupId,
+        },
+        select: { date: true, id: true },
+        orderBy: { date: 'asc' },
+      })
+
+      if (phaseMatches.length === 0) {
+        return null
+      }
+
+      // Get group info
+      const group = await prisma.group.findUnique({
+        where: { id: phase.groupId },
+        select: { name: true },
+      })
+
+      const dateRange = {
+        start: phaseMatches[0].date,
+        end: phaseMatches[phaseMatches.length - 1].date,
+      }
+
+      // Get news from this phase (either linked to phase matches OR within date range)
+      const matchIds = phaseMatches.map((m) => m.id)
+
+      const news = await prisma.newsArticle.findMany({
+        where: {
+          published: true,
+          OR: [
+            { matchId: { in: matchIds } },
+            {
+              AND: [
+                { generatedAt: { gte: dateRange.start } },
+                { generatedAt: { lte: dateRange.end } },
+              ],
+            },
+          ],
+        },
+        orderBy: { generatedAt: 'desc' },
+      })
+
+      // Get tournament stages to determine phase number
+      const allStagesInTournament = await prisma.match.groupBy({
+        by: ['stageId'],
+        where: { tournamentId: phase.tournamentId },
+        orderBy: { stageId: 'asc' },
+      })
+
+      const stageIndex = allStagesInTournament.findIndex(s => s.stageId === phase.stageId)
+      const phaseName = `${getTournamentName(phase.tournamentId)} - Fase ${stageIndex + 1} - ${group?.name || `Grupo ${phase.groupId}`}`
+
+      return {
+        tournamentId: phase.tournamentId,
+        stageId: phase.stageId,
+        groupId: phase.groupId,
+        phaseName,
+        dateRange,
+        news,
+      }
+    })
+  )
+
+  const validPhaseGroups = phaseGroups.filter((g): g is PhaseGroup => g !== null)
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-10">
       <h1 className="text-3xl font-extrabold text-navy mb-8">Noticias</h1>
 
-      {articles.length === 0 ? (
+      {validPhaseGroups.length === 0 ? (
         <div className="text-center py-20">
           <p className="text-gray-400 text-lg mb-10">No hay noticias publicadas aún.</p>
           <NewsletterSignup />
         </div>
       ) : (
         <>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {articles.map((article) => (
-              <NewsCard key={article.id} article={article} />
+          {/* Phase groups */}
+          <div className="space-y-12">
+            {validPhaseGroups.map((phaseGroup, idx) => (
+              <div key={`${phaseGroup.tournamentId}-${phaseGroup.stageId}-${phaseGroup.groupId}`}>
+                {/* Phase header */}
+                <div className="mb-6 border-b-2 border-wheat pb-2">
+                  <h2 className="text-2xl font-bold text-navy">{phaseGroup.phaseName}</h2>
+                  <p className="text-sm text-gray-500 mt-1">
+                    {phaseGroup.dateRange.start.toLocaleDateString('es-ES')} - {phaseGroup.dateRange.end.toLocaleDateString('es-ES')}
+                  </p>
+                </div>
+
+                {/* News in this phase */}
+                {phaseGroup.news.length === 0 ? (
+                  <p className="text-gray-400 text-sm italic">No hay noticias en esta fase.</p>
+                ) : (
+                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {phaseGroup.news.map((article) => (
+                      <NewsCard key={article.id} article={article} />
+                    ))}
+                  </div>
+                )}
+              </div>
             ))}
           </div>
 

@@ -10,7 +10,11 @@ const ACSED_TEAM_NAME = 'AC Sed'
 export default async function HomePage() {
   // Get the most recent tournament and stage
   const latestStanding = await prisma.standing.findFirst({
-    where: { teamName: ACSED_TEAM_NAME },
+    where: {
+      team: {
+        name: ACSED_TEAM_NAME
+      }
+    },
     orderBy: [
       { tournamentId: 'desc' },
       { stageId: 'desc' }
@@ -28,9 +32,12 @@ export default async function HomePage() {
         stageId: latestStanding.stageId,
         groupId: latestStanding.groupId,
       },
+      include: {
+        team: true,
+      },
       orderBy: { position: 'asc' },
     })
-    acsedStanding = standings.find(s => s.teamName === ACSED_TEAM_NAME) || null
+    acsedStanding = standings.find(s => s.team.name === ACSED_TEAM_NAME) || null
   }
 
   const [latestNews, latestMatches] = await Promise.all([
@@ -49,6 +56,10 @@ export default async function HomePage() {
       } : {
         homeScore: { not: null },
         awayScore: { not: null },
+      },
+      include: {
+        homeTeam: true,
+        awayTeam: true,
       },
       orderBy: { date: 'desc' },
       take: 5,
@@ -122,20 +133,22 @@ export default async function HomePage() {
               <h2 className="text-xl font-bold text-navy mb-4">Últimos Resultados</h2>
               <div className="space-y-3">
                 {latestMatches.map((m) => {
-                  const isAcsedHome = m.homeTeam.toUpperCase().includes('ACSED')
+                  const homeTeamName = m.homeTeam?.name ?? 'TBD'
+                  const awayTeamName = m.awayTeam?.name ?? 'TBD'
+                  const isAcsedHome = homeTeamName.toUpperCase().includes('ACSED')
                   return (
                     <div
                       key={m.id}
                       className="bg-white rounded-xl px-4 py-3 border border-cream-dark/30 flex items-center justify-between"
                     >
                       <span className={`text-sm font-medium ${isAcsedHome ? 'text-navy font-bold' : 'text-gray-600'}`}>
-                        {m.homeTeam}
+                        {homeTeamName}
                       </span>
                       <span className="font-bold text-lg text-navy mx-3 tabular-nums">
                         {m.homeScore ?? '?'} — {m.awayScore ?? '?'}
                       </span>
                       <span className={`text-sm font-medium ${!isAcsedHome ? 'text-navy font-bold' : 'text-gray-600'}`}>
-                        {m.awayTeam}
+                        {awayTeamName}
                       </span>
                     </div>
                   )

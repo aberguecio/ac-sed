@@ -25,6 +25,7 @@ export async function POST(request: Request) {
     // Get top scorers for the analysis (for this tournament)
     const topScorersAll = await prisma.leagueScorer.findMany({
       where: { tournamentId },
+      include: { team: true },
       orderBy: { goals: 'desc' },
     })
 
@@ -39,8 +40,14 @@ export async function POST(request: Request) {
       ? await prisma.match.findMany({
           where: {
             OR: upcomingRivals.flatMap((rival: string) => [
-              { homeTeam: ACSED_TEAM_NAME, awayTeam: rival },
-              { homeTeam: rival, awayTeam: ACSED_TEAM_NAME }
+              {
+                homeTeam: { name: ACSED_TEAM_NAME },
+                awayTeam: { name: rival }
+              },
+              {
+                homeTeam: { name: rival },
+                awayTeam: { name: ACSED_TEAM_NAME }
+              }
             ]),
             homeScore: { not: null },
             awayScore: { not: null },
@@ -49,6 +56,10 @@ export async function POST(request: Request) {
               tournamentId,
               stageId
             }
+          },
+          include: {
+            homeTeam: true,
+            awayTeam: true,
           },
           orderBy: { date: 'desc' },
           take: 10
@@ -67,10 +78,17 @@ export async function POST(request: Request) {
           firstName: s.playerName.split(' ')[0],
           lastName: s.playerName.split(' ').slice(1).join(' ')
         },
-        team: { name: s.teamName },
+        teamName: s.team.name,
         goals: s.goals,
       })),
-      previousMatches,
+      previousMatches: previousMatches.map((m) => ({
+        homeTeam: m.homeTeam?.name ?? 'TBD',
+        awayTeam: m.awayTeam?.name ?? 'TBD',
+        homeScore: m.homeScore,
+        awayScore: m.awayScore,
+        date: m.date,
+        roundName: m.roundName,
+      })),
     })
 
     // Save to cache

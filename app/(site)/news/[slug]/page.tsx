@@ -18,7 +18,14 @@ export default async function NewsDetailPage({ params }: Props) {
   const { slug } = await params
   const article = await prisma.newsArticle.findUnique({
     where: { slug, published: true },
-    include: { match: true },
+    include: {
+      match: {
+        include: {
+          homeTeam: true,
+          awayTeam: true,
+        }
+      }
+    },
   })
 
   if (!article) notFound()
@@ -49,11 +56,11 @@ export default async function NewsDetailPage({ params }: Props) {
           )}
           {article.match && (
             <div className="bg-navy text-cream rounded-xl px-5 py-3 inline-flex items-center gap-3 text-sm">
-              <span className="font-bold">{article.match.homeTeam}</span>
+              <span className="font-bold">{article.match.homeTeam?.name ?? 'TBD'}</span>
               <span className="bg-wheat text-navy font-extrabold px-3 py-1 rounded text-base">
                 {article.match.homeScore ?? '?'} — {article.match.awayScore ?? '?'}
               </span>
-              <span className="font-bold">{article.match.awayTeam}</span>
+              <span className="font-bold">{article.match.awayTeam?.name ?? 'TBD'}</span>
             </div>
           )}
         </header>

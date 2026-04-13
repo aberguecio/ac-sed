@@ -25,35 +25,32 @@ export async function GET() {
       tournamentStagesMap.get(s.tournamentId)!.add(s.stageId)
     })
 
-    console.log('Tournament stages map:', Array.from(tournamentStagesMap.entries()).map(([tid, stages]) => ({
-      tournamentId: tid,
-      stageIds: Array.from(stages)
-    })))
+    // Get tournament and stage names from database
+    const tournamentIds = Array.from(tournamentStagesMap.keys())
+    const tournamentsFromDB = await prisma.tournament.findMany({
+      where: { id: { in: tournamentIds } }
+    })
 
-    // Map to tournament names
+    const allStageIds = Array.from(tournamentStagesMap.values()).flatMap(set => Array.from(set))
+    const stagesFromDB = await prisma.stage.findMany({
+      where: { id: { in: allStageIds } }
+    })
+
+    // Create lookup maps
+    const tournamentNameMap = new Map(tournamentsFromDB.map(t => [t.id, t.name]))
+    const stageNameMap = new Map(stagesFromDB.map(s => [s.id, s.name]))
+
+    // Map to tournament objects with proper names
     const tournaments = Array.from(tournamentStagesMap.entries()).map(([tournamentId, stageIdsSet]) => {
-      // Determine tournament name based on ID
-      let name = 'Torneo Desconocido'
-      if (tournamentId === 201) name = 'Apertura 2026'
-      else if (tournamentId === 191) name = 'Clausura 2025'
-      else if (tournamentId === 178) name = 'Apertura 2025'
-      else if (tournamentId === 172) name = 'Clausura 2024'
-      else name = `Torneo ${tournamentId}`
+      const name = tournamentNameMap.get(tournamentId) || `Torneo ${tournamentId}`
 
       // Convert Set to sorted array
       const stageIds = Array.from(stageIdsSet).sort((a, b) => a - b)
 
-      const stages = stageIds.map((stageId, index) => {
-        // Determine stage name
-        let stageName = `Fase ${index + 1}`
-
-        return {
-          id: stageId,
-          name: stageName
-        }
-      })
-
-      console.log(`Tournament ${tournamentId} (${name}): ${stages.length} stages`, stages)
+      const stages = stageIds.map((stageId) => ({
+        id: stageId,
+        name: stageNameMap.get(stageId) || `Fase ${stageId}`
+      }))
 
       return {
         id: tournamentId,

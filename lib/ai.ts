@@ -43,12 +43,16 @@ export async function getMatchContext(match: Match) {
             tournamentId: match.tournamentId!,
             stageId: match.stageId!,
             OR: [
-              { homeTeam: { contains: 'AC SED', mode: 'insensitive' } },
-              { awayTeam: { contains: 'AC SED', mode: 'insensitive' } },
+              { homeTeam: { name: { contains: 'AC SED', mode: 'insensitive' } } },
+              { awayTeam: { name: { contains: 'AC SED', mode: 'insensitive' } } },
             ],
             homeScore: { not: null },
             id: { not: match.id },
             date: { lt: match.date },
+          },
+          include: {
+            homeTeam: true,
+            awayTeam: true,
           },
           orderBy: { date: 'asc' },
         })
@@ -60,18 +64,15 @@ export async function getMatchContext(match: Match) {
             tournamentId: match.tournamentId!,
             stageId: match.stageId!,
             OR: [
-              { homeTeam: { contains: 'AC SED', mode: 'insensitive' } },
-              { awayTeam: { contains: 'AC SED', mode: 'insensitive' } },
+              { homeTeam: { name: { contains: 'AC SED', mode: 'insensitive' } } },
+              { awayTeam: { name: { contains: 'AC SED', mode: 'insensitive' } } },
             ],
             date: { gt: match.date },
           },
           orderBy: { date: 'asc' },
-          select: {
-            id: true,
+          include: {
             homeTeam: true,
             awayTeam: true,
-            date: true,
-            // Don't select scores - we want to hide results from AI
           },
         })
       : Promise.resolve([]),
@@ -89,12 +90,9 @@ export async function getMatchContext(match: Match) {
             },
             homeScore: { not: null }, // Only played matches
           },
-          select: {
+          include: {
             homeTeam: true,
             awayTeam: true,
-            homeScore: true,
-            awayScore: true,
-            date: true,
           },
         })
       : Promise.resolve([]),
@@ -110,7 +108,7 @@ export async function getMatchContext(match: Match) {
         stageId: match.stageId!,
         groupId: match.groupId!,
       },
-      select: { teamName: true },
+      include: { team: true },
     })
 
     // Get all matches played in this group up to and including this match date
@@ -122,11 +120,9 @@ export async function getMatchContext(match: Match) {
         date: { lte: match.date },
         homeScore: { not: null }, // Only count played matches
       },
-      select: {
+      include: {
         homeTeam: true,
         awayTeam: true,
-        homeScore: true,
-        awayScore: true,
       },
     })
 
@@ -135,24 +131,27 @@ export async function getMatchContext(match: Match) {
 
     // Initialize all teams with zero stats
     for (const standing of storedStandings) {
-      teamStats.set(standing.teamName, { points: 0, won: 0, drawn: 0, lost: 0, gf: 0, ga: 0 })
+      const teamName = standing.team.name
+      teamStats.set(teamName, { points: 0, won: 0, drawn: 0, lost: 0, gf: 0, ga: 0 })
     }
 
     // Calculate stats from matches
     for (const m of groupMatches) {
       const homeScore = m.homeScore ?? 0
       const awayScore = m.awayScore ?? 0
+      const homeTeamName = m.homeTeam?.name ?? 'TBD'
+      const awayTeamName = m.awayTeam?.name ?? 'TBD'
 
       // Initialize teams if not in stored standings (shouldn't happen, but safe)
-      if (!teamStats.has(m.homeTeam)) {
-        teamStats.set(m.homeTeam, { points: 0, won: 0, drawn: 0, lost: 0, gf: 0, ga: 0 })
+      if (!teamStats.has(homeTeamName)) {
+        teamStats.set(homeTeamName, { points: 0, won: 0, drawn: 0, lost: 0, gf: 0, ga: 0 })
       }
-      if (!teamStats.has(m.awayTeam)) {
-        teamStats.set(m.awayTeam, { points: 0, won: 0, drawn: 0, lost: 0, gf: 0, ga: 0 })
+      if (!teamStats.has(awayTeamName)) {
+        teamStats.set(awayTeamName, { points: 0, won: 0, drawn: 0, lost: 0, gf: 0, ga: 0 })
       }
 
-      const homeStats = teamStats.get(m.homeTeam)!
-      const awayStats = teamStats.get(m.awayTeam)!
+      const homeStats = teamStats.get(homeTeamName)!
+      const awayStats = teamStats.get(awayTeamName)!
 
       // Update goals
       homeStats.gf += homeScore
@@ -217,10 +216,12 @@ export async function getMatchContext(match: Match) {
 }
 
 export async function generateMatchNews(
-  match: Match
+  match: Match & { homeTeam: { name: string } | null; awayTeam: { name: string } | null }
 ): Promise<{ title: string; content: string }> {
-  const isHome = match.homeTeam.toUpperCase().includes('ACSED') || match.homeTeam.toUpperCase().includes('AC SED')
-  const rival = isHome ? match.awayTeam : match.homeTeam
+  const homeTeamName = match.homeTeam?.name ?? 'TBD'
+  const awayTeamName = match.awayTeam?.name ?? 'TBD'
+  const isHome = homeTeamName.toUpperCase().includes('ACSED') || homeTeamName.toUpperCase().includes('AC SED')
+  const rival = isHome ? awayTeamName : homeTeamName
   const acsedScore = isHome ? match.homeScore : match.awayScore
   const rivalScore = isHome ? match.awayScore : match.homeScore
   const result =
@@ -278,10 +279,12 @@ export async function generateMatchNews(
   let streakInfo = ''
   if (previousMatches.length > 0) {
     const matchSummaries = previousMatches.map(m => {
-      const isHomeMatch = m.homeTeam.toUpperCase().includes('AC SED') || m.homeTeam.toUpperCase().includes('ACSED')
+      const homeTeamName = m.homeTeam?.name ?? 'TBD'
+      const awayTeamName = m.awayTeam?.name ?? 'TBD'
+      const isHomeMatch = homeTeamName.toUpperCase().includes('AC SED') || homeTeamName.toUpperCase().includes('ACSED')
       const our = (isHomeMatch ? m.homeScore : m.awayScore) ?? 0
       const their = (isHomeMatch ? m.awayScore : m.homeScore) ?? 0
-      const rivalName = isHomeMatch ? m.awayTeam : m.homeTeam
+      const rivalName = isHomeMatch ? awayTeamName : homeTeamName
       const resultLabel = our > their ? 'victoria' : our < their ? 'derrota' : 'empate'
       return `${resultLabel} ${our}-${their} vs ${rivalName}`
     })
@@ -321,24 +324,28 @@ export async function generateMatchNews(
         !s.teamName.toUpperCase().includes('ACSED')
       )
 
-      const relevantResults = otherMatchesInRound.filter(m =>
-        relevantTeams.some(t =>
-          m.homeTeam.includes(t.teamName) || m.awayTeam.includes(t.teamName)
+      const relevantResults = otherMatchesInRound.filter(m => {
+        const homeTeamName = m.homeTeam?.name ?? 'TBD'
+        const awayTeamName = m.awayTeam?.name ?? 'TBD'
+        return relevantTeams.some(t =>
+          homeTeamName.includes(t.teamName) || awayTeamName.includes(t.teamName)
         )
-      )
+      })
 
       if (relevantResults.length > 0) {
         const resultsStr = relevantResults.map(m => {
+          const homeTeamName = m.homeTeam?.name ?? 'TBD'
+          const awayTeamName = m.awayTeam?.name ?? 'TBD'
           // Find which relevant team played
           const relevantTeam = relevantTeams.find(t =>
-            m.homeTeam.includes(t.teamName) || m.awayTeam.includes(t.teamName)
+            homeTeamName.includes(t.teamName) || awayTeamName.includes(t.teamName)
           )
           if (!relevantTeam) return null
 
-          const teamWon = (m.homeTeam.includes(relevantTeam.teamName) && m.homeScore! > m.awayScore!) ||
-                         (m.awayTeam.includes(relevantTeam.teamName) && m.awayScore! > m.homeScore!)
-          const teamLost = (m.homeTeam.includes(relevantTeam.teamName) && m.homeScore! < m.awayScore!) ||
-                          (m.awayTeam.includes(relevantTeam.teamName) && m.awayScore! < m.homeScore!)
+          const teamWon = (homeTeamName.includes(relevantTeam.teamName) && m.homeScore! > m.awayScore!) ||
+                         (awayTeamName.includes(relevantTeam.teamName) && m.awayScore! > m.homeScore!)
+          const teamLost = (homeTeamName.includes(relevantTeam.teamName) && m.homeScore! < m.awayScore!) ||
+                          (awayTeamName.includes(relevantTeam.teamName) && m.awayScore! < m.homeScore!)
           const result = teamWon ? 'ganó' : teamLost ? 'perdió' : 'empató'
 
           return `[${relevantTeam.position}°] ${relevantTeam.teamName} ${result} ${m.homeScore}-${m.awayScore}`
@@ -378,8 +385,10 @@ export async function generateMatchNews(
     } else {
       // Show next rivals with their position
       const nextRivals = upcomingMatches.slice(0, 2).map(m => {
-        const isHome = m.homeTeam.toUpperCase().includes('AC SED') || m.homeTeam.toUpperCase().includes('ACSED')
-        const rivalName = isHome ? m.awayTeam : m.homeTeam
+        const homeTeamName = m.homeTeam?.name ?? 'TBD'
+        const awayTeamName = m.awayTeam?.name ?? 'TBD'
+        const isHome = homeTeamName.toUpperCase().includes('AC SED') || homeTeamName.toUpperCase().includes('ACSED')
+        const rivalName = isHome ? awayTeamName : homeTeamName
         const rivalStanding = standingsRows.find(s => s.teamName === rivalName)
         const positionStr = rivalStanding ? ` [${rivalStanding.position}°]` : ''
         return `${rivalName}${positionStr}`

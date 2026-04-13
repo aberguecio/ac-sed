@@ -47,7 +47,7 @@ export async function generateCoachAnalysis(data: any): Promise<string> {
 
       // Find rival's top scorer
       const rivalScorers = (topScorersAll || [])
-        .filter((s: any) => (s.team?.name || s.teamName) === nextRival)
+        .filter((s: any) => s.teamName === nextRival)
         .map((s: any) => ({
           name: s.player ? `${s.player.firstName} ${s.player.lastName}`.trim() : 'Jugador',
           goals: s.goals || 0

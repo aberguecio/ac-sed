@@ -15,8 +15,8 @@ export async function POST(request: NextRequest) {
     const match = await prisma.match.findUnique({
       where: { id: matchId },
       include: {
-        homeTeamRef: true,
-        awayTeamRef: true,
+        homeTeam: true,
+        awayTeam: true,
       }
     })
 
@@ -24,18 +24,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Match not found' }, { status: 404 })
     }
 
-    // Prepare team info - use Team entity if available, otherwise fallback to string
+    // Prepare team info
     const homeTeam = {
-      id: match.homeTeamRef?.id || 0,
-      name: match.homeTeamRef?.name || match.homeTeam,
-      logoUrl: match.homeTeamRef?.logoUrl || null,
+      id: match.homeTeam?.id || 0,
+      name: match.homeTeam?.name || 'TBD',
+      logoUrl: match.homeTeam?.logoUrl || null,
       score: match.homeScore
     }
 
     const awayTeam = {
-      id: match.awayTeamRef?.id || 0,
-      name: match.awayTeamRef?.name || match.awayTeam,
-      logoUrl: match.awayTeamRef?.logoUrl || null,
+      id: match.awayTeam?.id || 0,
+      name: match.awayTeam?.name || 'TBD',
+      logoUrl: match.awayTeam?.logoUrl || null,
       score: match.awayScore
     }
 

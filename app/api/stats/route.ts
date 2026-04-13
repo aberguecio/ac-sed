@@ -21,6 +21,10 @@ export async function GET(request: Request) {
         tournamentId,
         stageId,
       },
+      include: {
+        team: true,
+        group: true,
+      },
       orderBy: { position: 'asc' }
     })
 
@@ -42,10 +46,10 @@ export async function GET(request: Request) {
 
     // Get groupId and groupName from standings
     const groupId = standingsFromDB[0].groupId
-    const groupName = standingsFromDB[0].groupName
+    const groupName = standingsFromDB[0].group?.name ?? 'Sin nombre'
 
     const standingsData = standingsFromDB.map((s) => ({
-      teamName: s.teamName,
+      teamName: s.team.name,
       position: s.position,
       played: s.played,
       won: s.won,
@@ -62,16 +66,20 @@ export async function GET(request: Request) {
         tournamentId,
         stageId,
         OR: [
-          { homeTeam: ACSED_TEAM_NAME },
-          { awayTeam: ACSED_TEAM_NAME }
+          { homeTeam: { name: ACSED_TEAM_NAME } },
+          { awayTeam: { name: ACSED_TEAM_NAME } }
         ]
+      },
+      include: {
+        homeTeam: true,
+        awayTeam: true,
       },
       orderBy: { date: 'desc' },
     })
 
     const fixtures = allMatchesFromDB.map((m) => ({
-      homeTeam: m.homeTeam,
-      awayTeam: m.awayTeam,
+      homeTeam: m.homeTeam?.name ?? 'TBD',
+      awayTeam: m.awayTeam?.name ?? 'TBD',
       homeScore: m.homeScore,
       awayScore: m.awayScore,
     }))
@@ -92,23 +100,26 @@ export async function GET(request: Request) {
     // Get top scorers from DB for this tournament
     const topScorersAll = await prisma.leagueScorer.findMany({
       where: { tournamentId },
+      include: {
+        team: true,
+      },
       orderBy: { goals: 'desc' },
     })
 
     // Filter top scorers for this division
     const divisionTeams = standingsData.map((s) => s.teamName)
     const topScorers = topScorersAll
-      .filter((s) => divisionTeams.includes(s.teamName))
+      .filter((s) => divisionTeams.includes(s.team.name))
       .slice(0, 10)
       .map((s) => ({
         playerName: s.playerName,
-        teamName: s.teamName,
+        teamName: s.team.name,
         goals: s.goals,
       }))
 
     // Get AC SED scorers
     const teamScorers = topScorersAll
-      .filter((s) => s.teamName === ACSED_TEAM_NAME)
+      .filter((s) => s.team.name === ACSED_TEAM_NAME)
       .map((s) => ({
         playerName: s.playerName,
         goals: s.goals,
@@ -140,7 +151,7 @@ export async function GET(request: Request) {
     // If no analysis exists, we'll return null and let the client trigger generation
 
     return NextResponse.json({
-      standings: standingsData,
+      standings: standingsFromDB, // Send full objects with team relation
       topScorers,
       teamScorers,
       fixtures,

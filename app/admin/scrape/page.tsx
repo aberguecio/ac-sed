@@ -7,7 +7,15 @@ interface ScrapeLog {
   startedAt: string
   finishedAt: string | null
   status: string
+  tournamentId: number | null
+  tournamentName: string | null
+  stageIds: string | null
   matchesFound: number | null
+  newMatches: number | null
+  updatedMatches: number | null
+  teamsProcessed: number | null
+  standingsSaved: number | null
+  groupsFound: number | null
   errorMessage: string | null
   triggeredBy: string
 }
@@ -127,15 +135,29 @@ export default function AdminScrapePage() {
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
                   <th className="px-4 py-3 text-left text-gray-500 font-medium">Inicio</th>
+                  <th className="px-4 py-3 text-left text-gray-500 font-medium">Torneo</th>
                   <th className="px-4 py-3 text-left text-gray-500 font-medium">Estado</th>
-                  <th className="px-4 py-3 text-left text-gray-500 font-medium">Partidos nuevos</th>
-                  <th className="px-4 py-3 text-left text-gray-500 font-medium">Disparado por</th>
+                  <th className="px-4 py-3 text-left text-gray-500 font-medium">Estadísticas</th>
+                  <th className="px-4 py-3 text-left text-gray-500 font-medium">Por</th>
                 </tr>
               </thead>
               <tbody>
                 {logs.map((log) => (
                   <tr key={log.id} className="border-b border-gray-50 hover:bg-gray-50">
-                    <td className="px-4 py-3">{new Date(log.startedAt).toLocaleString('es-CL')}</td>
+                    <td className="px-4 py-3 text-gray-600">
+                      {new Date(log.startedAt).toLocaleString('es-CL', {
+                        dateStyle: 'short',
+                        timeStyle: 'short'
+                      })}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-navy">{log.tournamentName || '—'}</div>
+                      {log.stageIds && (
+                        <div className="text-xs text-gray-400">
+                          {JSON.parse(log.stageIds).length} fase{JSON.parse(log.stageIds).length > 1 ? 's' : ''}
+                        </div>
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${
                         log.status === 'success' ? 'bg-green-100 text-green-700' :
@@ -145,11 +167,28 @@ export default function AdminScrapePage() {
                         {log.status}
                       </span>
                       {log.errorMessage && (
-                        <p className="text-red-400 text-xs mt-1 max-w-xs truncate">{log.errorMessage}</p>
+                        <p className="text-red-400 text-xs mt-1 max-w-xs truncate" title={log.errorMessage}>
+                          {log.errorMessage}
+                        </p>
                       )}
                     </td>
-                    <td className="px-4 py-3">{log.matchesFound ?? '—'}</td>
-                    <td className="px-4 py-3 text-gray-500">{log.triggeredBy}</td>
+                    <td className="px-4 py-3">
+                      <div className="space-y-0.5 text-xs">
+                        <div className="flex gap-2">
+                          <span className="text-gray-500">Partidos:</span>
+                          <span className="font-medium text-green-600">{log.newMatches || 0} nuevos</span>
+                          <span className="text-gray-400">/ {log.updatedMatches || 0} actualizados</span>
+                        </div>
+                        {(log.teamsProcessed || log.standingsSaved || log.groupsFound) ? (
+                          <div className="text-gray-400">
+                            {log.groupsFound ? `${log.groupsFound} grupos · ` : ''}
+                            {log.teamsProcessed ? `${log.teamsProcessed} equipos · ` : ''}
+                            {log.standingsSaved ? `${log.standingsSaved} posiciones` : ''}
+                          </div>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-gray-500 text-xs">{log.triggeredBy}</td>
                   </tr>
                 ))}
               </tbody>

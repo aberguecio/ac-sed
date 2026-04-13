@@ -24,6 +24,10 @@ interface ArticleDetail {
   aiContext?: {
     matchDate: string
     matchInfo: string
+    goalsCount: number
+    goals: Array<{ minute: number | null; player: string; team: string }>
+    cardsCount: number
+    cards: Array<{ minute: number | null; type: string; player: string; team: string }>
     previousMatchesCount: number
     previousMatches: Array<{ date: string; match: string }>
     upcomingMatchesCount: number
@@ -466,6 +470,36 @@ export default function AdminNewsPage() {
                       <div>
                         <span className="font-medium">Fecha:</span> {editingArticle.aiContext.matchDate}
                       </div>
+
+                      {editingArticle.aiContext.goalsCount > 0 && (
+                        <details className="border-t pt-2">
+                          <summary className="font-medium cursor-pointer">
+                            Goles ({editingArticle.aiContext.goalsCount})
+                          </summary>
+                          <div className="mt-1 pl-3 space-y-0.5">
+                            {editingArticle.aiContext.goals.map((g, i) => (
+                              <div key={i} className="text-gray-500">
+                                {g.minute ? `${g.minute}'` : '?'} - {g.player} ({g.team})
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
+
+                      {editingArticle.aiContext.cardsCount > 0 && (
+                        <details className="border-t pt-2">
+                          <summary className="font-medium cursor-pointer">
+                            Tarjetas ({editingArticle.aiContext.cardsCount})
+                          </summary>
+                          <div className="mt-1 pl-3 space-y-0.5">
+                            {editingArticle.aiContext.cards.map((c, i) => (
+                              <div key={i} className="text-gray-500">
+                                {c.minute ? `${c.minute}'` : '?'} - {c.type === 'yellow' ? '🟨' : '🟥'} {c.player} ({c.team})
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
 
                       {editingArticle.aiContext.previousMatchesCount > 0 && (
                         <details className="border-t pt-2">

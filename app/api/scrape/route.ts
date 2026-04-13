@@ -3,6 +3,8 @@ import { runScraper } from '@/lib/scraper'
 import { generateMatchNews } from '@/lib/ai'
 import { prisma } from '@/lib/db'
 import slugify from 'slugify'
+import { generateVsImage } from '@/lib/vs-image-generator'
+import { uploadImageToS3 } from '@/lib/aws'
 
 export async function POST(request: Request) {
   try {
@@ -39,9 +41,50 @@ export async function POST(request: Request) {
           continue
         }
 
-        const { title, content } = await generateMatchNews(match)
+        // Fetch match with team relations for news generation
+        const matchWithTeams = await prisma.match.findUnique({
+          where: { id: match.id },
+          include: {
+            homeTeam: true,
+            awayTeam: true,
+          }
+        })
+
+        if (!matchWithTeams) {
+          console.log(`Match ${match.id} not found, skipping...`)
+          continue
+        }
+
+        const { title, content } = await generateMatchNews(matchWithTeams)
         const baseSlug = slugify(title, { lower: true, strict: true })
         const slug = `${baseSlug}-${Date.now()}`
+
+        // Generate VS image
+        let imageUrl: string | null = null
+        try {
+          const homeTeam = {
+            id: matchWithTeams.homeTeam?.id || 0,
+            name: matchWithTeams.homeTeam?.name || 'TBD',
+            logoUrl: matchWithTeams.homeTeam?.logoUrl || null,
+            score: matchWithTeams.homeScore
+          }
+
+          const awayTeam = {
+            id: matchWithTeams.awayTeam?.id || 0,
+            name: matchWithTeams.awayTeam?.name || 'TBD',
+            logoUrl: matchWithTeams.awayTeam?.logoUrl || null,
+            score: matchWithTeams.awayScore
+          }
+
+          const imageBuffer = await generateVsImage(homeTeam, awayTeam)
+          const fileName = `news/vs-${match.id}-${Date.now()}.png`
+          imageUrl = await uploadImageToS3(imageBuffer, fileName, 'image/png')
+          console.log(`VS image generated for match ${match.id}: ${imageUrl}`)
+        } catch (imageError) {
+          console.error(`Error generating VS image for match ${match.id}:`, imageError)
+          // Continue without image - don't fail the whole news generation
+        }
+
         const article = await prisma.newsArticle.create({
           data: {
             title,
@@ -49,6 +92,7 @@ export async function POST(request: Request) {
             content,
             matchId: match.id,
             aiProvider: process.env.AI_PROVIDER ?? 'openai',
+            imageUrl,
             published: false,
           },
         })

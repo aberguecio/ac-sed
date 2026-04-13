@@ -119,6 +119,10 @@ async function saveMatchEvents(matchId: number, leagueMatchId: number) {
 
     console.log(`  📝 Processing ${events.length} events for match ${leagueMatchId}`)
 
+    // Delete existing events for this match to avoid duplicates when re-scraping
+    await prisma.matchGoal.deleteMany({ where: { matchId } })
+    await prisma.matchCard.deleteMany({ where: { matchId } })
+
     for (const event of events) {
       const playerId = event.playerId
       const teamName = event.team?.name || 'Unknown'
@@ -151,22 +155,13 @@ async function saveMatchEvents(matchId: number, leagueMatchId: number) {
 
       // Save event based on type
       if (event.type === 'g') {
-        // Goal
-        await prisma.matchGoal.upsert({
-          where: {
-            matchId_leaguePlayerId: {
-              matchId,
-              leaguePlayerId: playerId
-            }
-          },
-          create: {
+        // Goal - create every time (same player can score multiple goals)
+        await prisma.matchGoal.create({
+          data: {
             matchId,
             leaguePlayerId: playerId,
             teamName,
             minute: null, // API doesn't provide minute
-          },
-          update: {
-            teamName,
           }
         })
       } else if (event.type === 'yc' || event.type === 'rc') {
@@ -232,11 +227,79 @@ async function saveTeam(teamId: number, teamName: string, logoUrl: string | null
   })
 }
 
-async function processSingleStage(tournamentId: number, stageId: number): Promise<Match[]> {
+// Helper to save or update tournament
+async function saveTournament(tournamentId: number, tournamentName: string, isActive: boolean) {
+  await prisma.tournament.upsert({
+    where: { id: tournamentId },
+    create: {
+      id: tournamentId,
+      name: tournamentName,
+      isActive,
+    },
+    update: {
+      name: tournamentName,
+      isActive,
+      updatedAt: new Date(),
+    }
+  })
+}
+
+// Helper to save or update stage
+async function saveStage(stageId: number, tournamentId: number, stageName: string | null, orderIndex: number) {
+  await prisma.stage.upsert({
+    where: { id: stageId },
+    create: {
+      id: stageId,
+      tournamentId,
+      name: stageName,
+      orderIndex,
+    },
+    update: {
+      name: stageName,
+      orderIndex,
+      updatedAt: new Date(),
+    }
+  })
+}
+
+// Helper to save or update group
+async function saveGroup(groupId: number, stageId: number, groupName: string) {
+  await prisma.group.upsert({
+    where: { id: groupId },
+    create: {
+      id: groupId,
+      stageId,
+      name: groupName,
+    },
+    update: {
+      name: groupName,
+      updatedAt: new Date(),
+    }
+  })
+}
+
+interface StageStats {
+  groupsFound: number
+  teamsProcessed: number
+  standingsSaved: number
+  newMatches: number
+  updatedMatches: number
+}
+
+async function processSingleStage(tournamentId: number, stageId: number): Promise<{ matches: Match[], stats: StageStats }> {
+  const stats: StageStats = {
+    groupsFound: 0,
+    teamsProcessed: 0,
+    standingsSaved: 0,
+    newMatches: 0,
+    updatedMatches: 0
+  }
+
   // Get groups for this stage
   console.log(`🔍 Fetching groups for stage ${stageId}...`)
   const groups = await fetchAPI(`/stages/${stageId}/groups`)
   const allGroupIds = Array.isArray(groups) ? groups.map((g: any) => g.id) : []
+  stats.groupsFound = allGroupIds.length
   console.log(`✓ Found ${allGroupIds.length} groups`)
 
   // Find AC SED's group
@@ -258,8 +321,11 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
 
   if (!acsedGroupId) {
     console.log(`⚠️  AC SED not found in any group for stage ${stageId}, skipping...`)
-    return []
+    return { matches: [], stats }
   }
+
+  // Save the group
+  await saveGroup(acsedGroupId, stageId, acsedGroupName)
 
   // Only fetch data for AC SED's group
   console.log('📊 Fetching standings, matches, and scorers...')
@@ -278,6 +344,7 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
     for (const s of standings) {
       if (s.team?.id && s.team?.name) {
         await saveTeam(s.team.id, s.team.name, s.team.teamLogoUrl)
+        stats.teamsProcessed++
       }
     }
 
@@ -293,9 +360,7 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
       tournamentId,
       stageId,
       groupId: acsedGroupId,
-      groupName: acsedGroupName,
-      teamName: s.team?.name || 'Unknown',
-      teamId: s.team?.id || null,
+      teamId: s.team?.id!,
       position: s.team?.id === ACSED_TEAM_ID ? 1 : 99, // Priorizar AC SED
       played: s.played || 0,
       won: s.won || 0,
@@ -304,18 +369,27 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
       goalsFor: s.goalsFor || 0,
       goalsAgainst: s.goalsAgainst || 0,
       points: s.points || 0,
-    }))
+    })).filter(s => s.teamId) // Filter out any without teamId
     // Ordenar por puntos
     standingsData.sort((a, b) => b.points - a.points)
     // Asignar posiciones correctas
     standingsData.forEach((s, i) => (s.position = i + 1))
     await prisma.standing.createMany({ data: standingsData })
+    stats.standingsSaved = standingsData.length
     console.log('✓ Teams and standings saved')
   }
 
   // Process top scorers
   if (Array.isArray(topScorers) && topScorers.length > 0) {
     console.log(`💾 Saving ${topScorers.length} scorers...`)
+
+    // First, save all teams from scorers
+    for (const scorer of topScorers) {
+      if (scorer.team?.id && scorer.team?.name) {
+        await saveTeam(scorer.team.id, scorer.team.name, scorer.team.teamLogoUrl)
+      }
+    }
+
     // Delete only scorers for this tournament
     await prisma.leagueScorer.deleteMany({
       where: { tournamentId }
@@ -325,9 +399,9 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
       playerName: s.player
         ? `${s.player.firstName} ${s.player.lastName}`.trim()
         : s.playerName || 'Unknown',
-      teamName: s.team?.name || s.teamName || 'Unknown',
+      teamId: s.team?.id!,
       goals: s.goals || 0,
-    }))
+    })).filter(s => s.teamId) // Filter out any without teamId
     await prisma.leagueScorer.createMany({ data: scorersData })
     console.log('✓ Scorers saved')
   }
@@ -338,7 +412,7 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
 
   if (!Array.isArray(matchDays)) {
     console.log('  No match days found')
-    return newMatches
+    return { matches: newMatches, stats }
   }
 
   let totalMatches = 0
@@ -350,15 +424,13 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
       const matchId = String(match.id)
       const homeTeamId = match.homeTeam?.id || null
       const awayTeamId = match.awayTeam?.id || null
-      const homeTeam = match.homeTeam?.name || 'Unknown'
-      const awayTeam = match.awayTeam?.name || 'Unknown'
 
       // Save teams if they have valid IDs
-      if (homeTeamId && homeTeam !== 'Unknown') {
-        await saveTeam(homeTeamId, homeTeam, match.homeTeam?.teamLogoUrl)
+      if (homeTeamId && match.homeTeam?.name) {
+        await saveTeam(homeTeamId, match.homeTeam.name, match.homeTeam.teamLogoUrl)
       }
-      if (awayTeamId && awayTeam !== 'Unknown') {
-        await saveTeam(awayTeamId, awayTeam, match.awayTeam?.teamLogoUrl)
+      if (awayTeamId && match.awayTeam?.name) {
+        await saveTeam(awayTeamId, match.awayTeam.name, match.awayTeam.teamLogoUrl)
       }
 
       // Combine matchDay.date with matchSchedule.schedule to get full datetime
@@ -377,8 +449,6 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
         tournamentId,
         stageId,
         groupId: match.groupId || acsedGroupId,
-        homeTeam,
-        awayTeam,
         homeTeamId,
         awayTeamId,
         homeScore: match.homeScore,
@@ -396,14 +466,13 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
 
     if (!existing) {
       savedMatch = await prisma.match.create({ data: matchData })
-      if (
-        homeTeam.includes('AC Sed') ||
-        awayTeam.includes('AC Sed')
-      ) {
+      stats.newMatches++
+      if (homeTeamId === ACSED_TEAM_ID || awayTeamId === ACSED_TEAM_ID) {
         newMatches.push(savedMatch)
       }
     } else {
       savedMatch = existing
+      stats.updatedMatches++
       if (
         existing.homeScore !== match.homeScore ||
         existing.awayScore !== match.awayScore ||
@@ -431,8 +500,9 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
   }
 
   console.log(`  Found ${totalMatches} total matches`)
+  console.log(`  Stats: ${stats.newMatches} new, ${stats.updatedMatches} updated`)
 
-  return newMatches
+  return { matches: newMatches, stats }
 }
 
 export async function runScraper(
@@ -464,8 +534,16 @@ export async function runScraper(
 
       if (!tournamentRes) throw new Error(`Tournament ${options.tournamentId} not found`)
 
+      // Save tournament
+      await saveTournament(tournamentRes.id, tournamentRes.name || `Torneo ${tournamentRes.id}`, tournamentRes.isActive || false)
+
       const stages = tournamentRes.stages || []
       if (stages.length === 0) throw new Error('No stages found in tournament')
+
+      // Save all stages with order index
+      for (let i = 0; i < stages.length; i++) {
+        await saveStage(stages[i].id, tournamentRes.id, stages[i].name || null, i)
+      }
 
       stagesToProcess = stages.map((s: any) => s.id)
       console.log(`✓ Will process ${stagesToProcess.length} stages of tournament ${options.tournamentId}: ${stagesToProcess.join(', ')}`)
@@ -482,9 +560,17 @@ export async function runScraper(
       if (!activeTournament) throw new Error('No tournaments found')
       console.log(`✓ Active tournament: ${activeTournament.name || activeTournament.id} (ID: ${activeTournament.id})`)
 
+      // Save tournament
+      await saveTournament(activeTournament.id, activeTournament.name || `Torneo ${activeTournament.id}`, activeTournament.isActive || false)
+
       // Process ALL stages of this tournament
       const stages = activeTournament.stages || []
       if (stages.length === 0) throw new Error('No stages found in tournament')
+
+      // Save all stages with order index
+      for (let i = 0; i < stages.length; i++) {
+        await saveStage(stages[i].id, activeTournament.id, stages[i].name || null, i)
+      }
 
       stagesToProcess = stages.map((s: any) => s.id)
       console.log(`✓ Will process ${stagesToProcess.length} stages: ${stagesToProcess.join(', ')}`)
@@ -493,12 +579,26 @@ export async function runScraper(
     }
 
     const allNewMatches: Match[] = []
+    let totalNewMatches = 0
+    let totalUpdatedMatches = 0
+    let totalTeamsProcessed = 0
+    let totalStandingsSaved = 0
+    let totalGroupsFound = 0
+
+    // Get tournament name for logging
+    const tournament = await prisma.tournament.findUnique({ where: { id: tournamentId } })
+    const tournamentName = tournament?.name || `Torneo ${tournamentId}`
 
     // Process each stage
     for (const stageId of stagesToProcess) {
       console.log(`\n🔄 Processing stage ${stageId}...`)
-      const newMatchesForStage = await processSingleStage(tournamentId, stageId)
-      allNewMatches.push(...newMatchesForStage)
+      const result = await processSingleStage(tournamentId, stageId)
+      allNewMatches.push(...result.matches)
+      totalNewMatches += result.stats.newMatches
+      totalUpdatedMatches += result.stats.updatedMatches
+      totalTeamsProcessed += result.stats.teamsProcessed
+      totalStandingsSaved += result.stats.standingsSaved
+      totalGroupsFound += result.stats.groupsFound
     }
 
     console.log(`✅ Scraper completed! Found ${allNewMatches.length} new AC SED matches across all stages`)
@@ -508,7 +608,15 @@ export async function runScraper(
       data: {
         status: 'success',
         finishedAt: new Date(),
+        tournamentId,
+        tournamentName,
+        stageIds: JSON.stringify(stagesToProcess),
         matchesFound: allNewMatches.length,
+        newMatches: totalNewMatches,
+        updatedMatches: totalUpdatedMatches,
+        teamsProcessed: totalTeamsProcessed,
+        standingsSaved: totalStandingsSaved,
+        groupsFound: totalGroupsFound,
       },
     })
 
