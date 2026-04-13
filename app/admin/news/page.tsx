@@ -97,6 +97,16 @@ export default function AdminNewsPage() {
     setSendingId(null)
   }
 
+  function openCreate() {
+    setImageFile(null)
+    setImagePreview(null)
+    setEditTitle('')
+    setEditContent('')
+    setEditDate(toDateInputValue(new Date().toISOString()))
+    setEditImageUrl(null)
+    setEditingArticle({ id: 0, title: '', content: '', imageUrl: null, generatedAt: new Date().toISOString(), match: null })
+  }
+
   async function openEdit(id: number) {
     setEditLoading(true)
     setImageFile(null)
@@ -123,13 +133,17 @@ export default function AdminNewsPage() {
     if (!editingArticle) return
     setEditSaving(true)
 
-    let imageUrl = editImageUrl
+    const isNew = editingArticle.id === 0
 
+    // Upload image first if there's one
+    let imageUrl = editImageUrl
     if (imageFile) {
       setUploadingImage(true)
       const formData = new FormData()
       formData.append('file', imageFile)
-      formData.append('articleId', String(editingArticle.id))
+      if (!isNew) {
+        formData.append('articleId', String(editingArticle.id))
+      }
       const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData })
       if (uploadRes.ok) {
         const uploadData = await uploadRes.json()
@@ -138,16 +152,32 @@ export default function AdminNewsPage() {
       setUploadingImage(false)
     }
 
-    await fetch(`/api/news/${editingArticle.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: editTitle,
-        content: editContent,
-        generatedAt: new Date(editDate).toISOString(),
-        imageUrl,
-      }),
-    })
+    if (isNew) {
+      // Create new article
+      await fetch('/api/news', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: editTitle,
+          content: editContent,
+          generatedAt: new Date(editDate).toISOString(),
+          imageUrl,
+        }),
+      })
+    } else {
+      // Update existing article
+      await fetch(`/api/news/${editingArticle.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: editTitle,
+          content: editContent,
+          generatedAt: new Date(editDate).toISOString(),
+          imageUrl,
+        }),
+      })
+    }
+
     setEditingArticle(null)
     setEditSaving(false)
     setImageFile(null)
@@ -157,7 +187,15 @@ export default function AdminNewsPage() {
 
   return (
     <div className="p-8">
-      <h1 className="text-2xl font-extrabold text-navy mb-8">Noticias</h1>
+      <div className="flex items-center justify-between mb-8">
+        <h1 className="text-2xl font-extrabold text-navy">Noticias</h1>
+        <button
+          onClick={openCreate}
+          className="px-4 py-2 bg-navy text-cream rounded-lg font-semibold hover:bg-navy-light transition-colors"
+        >
+          + Crear Noticia
+        </button>
+      </div>
 
       {sendResult && (
         <div className="mb-4 bg-green-50 border border-green-200 rounded-lg px-4 py-3 flex items-center justify-between">

@@ -5,20 +5,53 @@ import Link from 'next/link'
 
 export const revalidate = 300 // revalidate every 5 min
 
+const ACSED_TEAM_NAME = 'AC Sed'
+
 export default async function HomePage() {
-  const [standings, latestNews, latestMatches, acsedStanding] = await Promise.all([
-    prisma.standing.findMany({ orderBy: { position: 'asc' }, take: 8 }),
+  // Get the most recent tournament and stage
+  const latestStanding = await prisma.standing.findFirst({
+    where: { teamName: ACSED_TEAM_NAME },
+    orderBy: [
+      { tournamentId: 'desc' },
+      { stageId: 'desc' }
+    ],
+  })
+
+  let standings: Awaited<ReturnType<typeof prisma.standing.findMany>> = []
+  let acsedStanding: Awaited<ReturnType<typeof prisma.standing.findFirst>> = null
+
+  if (latestStanding) {
+    // Get standings for the same tournament/stage/group as AC SED
+    standings = await prisma.standing.findMany({
+      where: {
+        tournamentId: latestStanding.tournamentId,
+        stageId: latestStanding.stageId,
+        groupId: latestStanding.groupId,
+      },
+      orderBy: { position: 'asc' },
+    })
+    acsedStanding = standings.find(s => s.teamName === ACSED_TEAM_NAME) || null
+  }
+
+  const [latestNews, latestMatches] = await Promise.all([
     prisma.newsArticle.findMany({
       where: { published: true },
       orderBy: { generatedAt: 'desc' },
       take: 3,
     }),
     prisma.match.findMany({
+      where: latestStanding ? {
+        tournamentId: latestStanding.tournamentId,
+        stageId: latestStanding.stageId,
+        groupId: latestStanding.groupId,
+        homeScore: { not: null },
+        awayScore: { not: null },
+      } : {
+        homeScore: { not: null },
+        awayScore: { not: null },
+      },
       orderBy: { date: 'desc' },
       take: 5,
-    }),
-    prisma.standing.findFirst({
-      where: { teamName: { contains: 'ACSED', mode: 'insensitive' } },
     }),
   ])
 
