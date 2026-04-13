@@ -7,7 +7,14 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params
   const article = await prisma.newsArticle.findUnique({
     where: { id: parseInt(id) },
-    include: { match: true },
+    include: {
+      match: {
+        include: {
+          homeTeam: { select: { name: true } },
+          awayTeam: { select: { name: true } },
+        },
+      },
+    },
   })
   if (!article?.match) {
     return NextResponse.json({ error: 'Article or match not found' }, { status: 404 })

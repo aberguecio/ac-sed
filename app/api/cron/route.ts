@@ -15,7 +15,18 @@ export async function GET(req: NextRequest) {
 
     for (const match of newMatches) {
       try {
-        const { title, content } = await generateMatchNews(match)
+        // Fetch match with team relations for news generation
+        const matchWithTeams = await prisma.match.findUnique({
+          where: { id: match.id },
+          include: {
+            homeTeam: { select: { name: true } },
+            awayTeam: { select: { name: true } },
+          },
+        })
+
+        if (!matchWithTeams) continue
+
+        const { title, content } = await generateMatchNews(matchWithTeams)
         const baseSlug = slugify(title, { lower: true, strict: true })
         const slug = `${baseSlug}-${Date.now()}`
         await prisma.newsArticle.create({

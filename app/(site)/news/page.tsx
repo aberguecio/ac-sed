@@ -8,9 +8,9 @@ export const metadata: Metadata = { title: 'Noticias — AC SED' }
 export const revalidate = 60
 
 interface PhaseGroup {
-  tournamentId: number
-  stageId: number
-  groupId: number
+  tournamentId: number | null
+  stageId: number | null
+  groupId: number | null
   phaseName: string
   dateRange: { start: Date; end: Date }
   news: any[]
@@ -42,7 +42,8 @@ export default async function NewsPage({ searchParams }: Props) {
   const phases = allPhases.slice((page - 1) * phasesPerPage, page * phasesPerPage)
 
   // Helper function to get tournament name
-  function getTournamentName(tournamentId: number): string {
+  function getTournamentName(tournamentId: number | null): string {
+    if (!tournamentId) return 'Torneo Desconocido'
     if (tournamentId === 201) return 'Apertura 2026'
     if (tournamentId === 191) return 'Clausura 2025'
     if (tournamentId === 178) return 'Apertura 2025'
@@ -69,10 +70,10 @@ export default async function NewsPage({ searchParams }: Props) {
       }
 
       // Get group info
-      const group = await prisma.group.findUnique({
+      const group = phase.groupId ? await prisma.group.findUnique({
         where: { id: phase.groupId },
         select: { name: true },
-      })
+      }) : null
 
       const dateRange = {
         start: phaseMatches[0].date,

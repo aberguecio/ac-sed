@@ -21,8 +21,8 @@ export default async function HomePage() {
     ],
   })
 
-  let standings: Awaited<ReturnType<typeof prisma.standing.findMany>> = []
-  let acsedStanding: Awaited<ReturnType<typeof prisma.standing.findFirst>> = null
+  let standings: Awaited<ReturnType<typeof prisma.standing.findMany<{ include: { team: true } }>>> = []
+  let acsedStanding: typeof standings[number] | null = null
 
   if (latestStanding) {
     // Get standings for the same tournament/stage/group as AC SED
