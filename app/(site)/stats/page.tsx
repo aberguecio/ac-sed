@@ -114,7 +114,7 @@ export default function StatsPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
-      <h1 className="text-3xl font-extrabold text-navy mb-8">Estadísticas</h1>
+      <h1 className="text-3xl font-extrabold text-navy mb-8">Estadísticas del Torneo</h1>
 
       {/* Tournament Selector */}
       {loadingTournaments ? (
@@ -175,47 +175,44 @@ export default function StatsPage() {
         </div>
       ) : stats ? (
         <>
-          {/* Division Badge */}
+          {/* Division Badge with Line */}
           {stats.groupName && (
-            <div className="text-center mb-6">
-              <span className="inline-block bg-navy text-cream px-4 py-2 rounded-lg font-semibold">
-                {stats.groupName}
-              </span>
+            <div className="mb-8">
+              <div className="border-b-4 border-navy pb-2">
+                <h2 className="text-xl font-bold text-navy">{stats.groupName}</h2>
+              </div>
             </div>
           )}
 
-          {/* Main Grid */}
-          <div className="grid md:grid-cols-2 gap-6 mb-8">
-            {/* Standings */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <h2 className="text-lg font-bold text-navy px-4 py-3 bg-gray-50">Tabla de Posiciones</h2>
-              <StandingsTable standings={stats.standings} />
-            </div>
-
-            {/* Division Top Scorers */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <h2 className="text-lg font-bold text-navy px-4 py-3 bg-gray-50">Goleadores División</h2>
-              <div className="p-4">
-                {stats.topScorers.length > 0 ? (
-                  <div className="space-y-2">
-                    {stats.topScorers.slice(0, 10).map((scorer: any, idx: number) => (
-                      <div key={idx} className="flex justify-between items-center py-2 border-b last:border-0">
-                        <div>
-                          <span className="font-semibold">{idx + 1}. {scorer.playerName}</span>
-                          <span className="text-sm text-gray-500 ml-2">({scorer.teamName})</span>
-                        </div>
-                        <span className="font-bold text-navy">{scorer.goals}</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-gray-400 text-center py-8">Sin goleadores registrados</p>
-                )}
+          {/* Quick Stats Row */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-8">
+            <div className="p-6 grid grid-cols-2 md:grid-cols-4 gap-6">
+              <div className="text-center">
+                <p className="text-3xl font-bold text-navy">{stats.goalsFor}</p>
+                <p className="text-sm text-gray-500">Goles a Favor</p>
+              </div>
+              <div className="text-center">
+                <p className="text-3xl font-bold text-red-500">{stats.goalsAgainst}</p>
+                <p className="text-sm text-gray-500">Goles en Contra</p>
+              </div>
+              <div className="text-center">
+                <p className="text-3xl font-bold text-wheat">{goalsPerMatch}</p>
+                <p className="text-sm text-gray-500">Goles por Partido</p>
+              </div>
+              <div className="text-center">
+                <p className="text-3xl font-bold text-green-500">{stats.matchesPlayed}/{stats.totalMatches}</p>
+                <p className="text-sm text-gray-500">Partidos Jugados</p>
               </div>
             </div>
           </div>
 
-          {/* Team Stats Row */}
+          {/* Full Standings Table */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-8">
+            <h2 className="text-lg font-bold text-navy px-4 py-3 bg-gray-50">Tabla de Posiciones</h2>
+            <StandingsTable standings={stats.standings} />
+          </div>
+
+          {/* Scorers Row: AC SED + Division */}
           <div className="grid md:grid-cols-2 gap-6 mb-8">
             {/* AC SED Scorers */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -236,33 +233,32 @@ export default function StatsPage() {
               </div>
             </div>
 
-            {/* Quick Stats */}
+            {/* Division Top Scorers */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <h2 className="text-lg font-bold text-navy px-4 py-3 bg-gray-50">Estadísticas del Torneo</h2>
-              <div className="p-4 grid grid-cols-2 gap-4">
-                <div className="text-center">
-                  <p className="text-3xl font-bold text-navy">{stats.goalsFor}</p>
-                  <p className="text-sm text-gray-500">Goles a Favor</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-3xl font-bold text-red-500">{stats.goalsAgainst}</p>
-                  <p className="text-sm text-gray-500">Goles en Contra</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-3xl font-bold text-wheat">{goalsPerMatch}</p>
-                  <p className="text-sm text-gray-500">Goles por Partido</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-3xl font-bold text-green-500">{stats.matchesPlayed}/{stats.totalMatches}</p>
-                  <p className="text-sm text-gray-500">Partidos Jugados</p>
-                </div>
+              <h2 className="text-lg font-bold text-navy px-4 py-3 bg-gray-50">Goleadores del Campeonato</h2>
+              <div className="p-4">
+                {stats.topScorers.length > 0 ? (
+                  <div className="space-y-2">
+                    {stats.topScorers.slice(0, 12).map((scorer: any, idx: number) => (
+                      <div key={idx} className="flex justify-between items-center py-2 border-b last:border-0">
+                        <div>
+                          <span className="font-semibold">{idx + 1}. {scorer.playerName}</span>
+                          <span className="text-sm text-gray-500 ml-2">({scorer.teamName})</span>
+                        </div>
+                        <span className="font-bold text-navy">{scorer.goals}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-gray-400 text-center py-8">Sin goleadores registrados</p>
+                )}
               </div>
             </div>
           </div>
 
-          {/* AI Analysis */}
+          {/* AI Analysis - Coach Commentary */}
           {(stats.analysis || generatingAnalysis) && (
-            <div className="bg-gradient-to-r from-navy to-navy-light text-cream rounded-xl p-6 shadow-lg">
+            <div className="bg-gradient-to-r from-navy to-navy-light text-cream rounded-xl p-6 shadow-lg mb-8">
               <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
                 🎯 Análisis del Coach
               </h2>
