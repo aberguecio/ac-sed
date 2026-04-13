@@ -22,9 +22,7 @@ export function Navbar() {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-full bg-wheat flex items-center justify-center font-bold text-navy text-sm">
-              AC
-            </div>
+            <img src="/ACSED-transaparent.webp" alt="AC SED" className="h-12 w-auto" />
             <span className="text-cream font-bold text-lg tracking-wide">AC SED</span>
           </Link>
 

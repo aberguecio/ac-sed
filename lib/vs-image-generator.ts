@@ -37,12 +37,12 @@ async function getTeamLogo(team: TeamInfo): Promise<Buffer | null> {
   if (team.name.includes('AC Sed') || team.name.includes('AC SED')) {
     try {
       // Try transparent logo first
-      const transparentLogoPath = path.join(process.cwd(), 'public', 'logo-transparent.png')
+      const transparentLogoPath = path.join(process.cwd(), 'public', 'ACSED-transaparent.webp')
       return await fs.readFile(transparentLogoPath)
     } catch (error) {
       try {
         // Fallback to webp logo
-        const localLogoPath = path.join(process.cwd(), 'public', 'acsed.webp')
+        const localLogoPath = path.join(process.cwd(), 'public', 'ACSED.webp')
         return await fs.readFile(localLogoPath)
       } catch (error2) {
         console.log('Local AC SED logos not found, will use placeholder')
@@ -84,7 +84,7 @@ function createPlaceholderLogo(teamName: string): Promise<Buffer> {
 export async function generateVsImage(homeTeam: TeamInfo, awayTeam: TeamInfo): Promise<Buffer> {
   const width = 1200
   const height = 630
-  const logoSize = 200 // Increased logo size
+  const logoSize = 250 // Increased logo size
 
   // Get or create logos
   const [homeLogoBuffer, awayLogoBuffer] = await Promise.all([
