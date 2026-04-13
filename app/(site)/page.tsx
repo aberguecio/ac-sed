@@ -123,7 +123,9 @@ export default async function HomePage() {
               <Link href="/stats" className="text-sm text-wheat hover:underline">Ver estadísticas →</Link>
             </div>
             <div className="bg-white rounded-xl shadow-sm border border-cream-dark/30 overflow-hidden">
-              <StandingsTable standings={standings} />
+              <div className="overflow-x-auto">
+                <StandingsTable standings={standings} />
+              </div>
             </div>
           </section>
 
