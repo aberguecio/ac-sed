@@ -102,6 +102,13 @@ model Player {
   bio              String?
   active           Boolean        @default(true)
   createdAt        DateTime       @default(now())
+  // Hexagonal stats (0-99, like FIFA)
+  statRitmo        Int?
+  statDisparo      Int?
+  statPase         Int?
+  statRegate       Int?
+  statDefensa      Int?
+  statFisico       Int?
   // Link to scraped player data
   leaguePlayerId   Int?           @unique // ID from Liga B API
   goals            MatchGoal[]

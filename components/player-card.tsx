@@ -1,4 +1,5 @@
 import type { Player } from '@prisma/client'
+import { HexagonStats } from './hexagon-stats'
 
 interface Props {
   player: Player
@@ -28,10 +29,23 @@ const POSITION_LABELS: Record<string, string> = {
   delantero: 'Delantero',
 }
 
+function hasAnyStats(player: Player) {
+  return (
+    player.statRitmo != null ||
+    player.statDisparo != null ||
+    player.statPase != null ||
+    player.statRegate != null ||
+    player.statDefensa != null ||
+    player.statFisico != null
+  )
+}
+
 export function PlayerCard({ player }: Props) {
   const posLabel = player.position
     ? POSITION_LABELS[player.position.toLowerCase()] ?? player.position
     : null
+
+  const showStats = hasAnyStats(player)
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-cream-dark/30 overflow-hidden text-center hover:shadow-md transition-shadow">
@@ -54,11 +68,28 @@ export function PlayerCard({ player }: Props) {
           </span>
         )}
       </div>
+
       <div className="p-4">
         <h3 className="font-bold text-navy text-base leading-tight">{player.name}</h3>
         {posLabel && <p className="text-sm text-wheat mt-1">{posLabel}</p>}
         {player.bio && <p className="text-xs text-gray-500 mt-2 line-clamp-2">{player.bio}</p>}
       </div>
+
+      {showStats && (
+        <div className="bg-navy px-2 pb-4 flex justify-center">
+          <HexagonStats
+            stats={{
+              statRitmo: player.statRitmo,
+              statDisparo: player.statDisparo,
+              statPase: player.statPase,
+              statRegate: player.statRegate,
+              statDefensa: player.statDefensa,
+              statFisico: player.statFisico,
+            }}
+            size={160}
+          />
+        </div>
+      )}
     </div>
   )
 }
