@@ -40,6 +40,7 @@ services:
       - "traefik.http.routers.acsed.rule=Host(`acsed.cl`)"
       - "traefik.http.routers.acsed.entrypoints=websecure"
       - "traefik.http.routers.acsed.tls=true"
+      - "traefik.http.routers.acsed.priority=100"
       - "traefik.http.services.acsed.loadbalancer.server.port=3000"
       - "traefik.docker.network=proxy"
       - "monitoring.url=https://acsed.cl"
