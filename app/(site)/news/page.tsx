@@ -41,16 +41,6 @@ export default async function NewsPage({ searchParams }: Props) {
   // Get phases for current page
   const phases = allPhases.slice((page - 1) * phasesPerPage, page * phasesPerPage)
 
-  // Helper function to get tournament name
-  function getTournamentName(tournamentId: number | null): string {
-    if (!tournamentId) return 'Torneo Desconocido'
-    if (tournamentId === 201) return 'Apertura 2026'
-    if (tournamentId === 191) return 'Clausura 2025'
-    if (tournamentId === 178) return 'Apertura 2025'
-    if (tournamentId === 172) return 'Clausura 2024'
-    return `Torneo ${tournamentId}`
-  }
-
   // Build phase groups with news
   const phaseGroupsRaw = await Promise.all(
     phases.map(async (phase) => {
@@ -68,6 +58,18 @@ export default async function NewsPage({ searchParams }: Props) {
       if (phaseMatches.length === 0) {
         return null
       }
+
+      // Get tournament info
+      const tournament = phase.tournamentId ? await prisma.tournament.findUnique({
+        where: { id: phase.tournamentId },
+        select: { name: true },
+      }) : null
+
+      // Get stage info
+      const stage = phase.stageId ? await prisma.stage.findUnique({
+        where: { id: phase.stageId },
+        select: { name: true },
+      }) : null
 
       // Get group info
       const group = phase.groupId ? await prisma.group.findUnique({
@@ -99,15 +101,11 @@ export default async function NewsPage({ searchParams }: Props) {
         orderBy: { generatedAt: 'desc' },
       })
 
-      // Get tournament stages to determine phase number
-      const allStagesInTournament = await prisma.match.groupBy({
-        by: ['stageId'],
-        where: { tournamentId: phase.tournamentId },
-        orderBy: { stageId: 'asc' },
-      })
+      const tournamentName = tournament?.name || `Torneo ${phase.tournamentId}`
+      const stageName = stage?.name || `Fase ${phase.stageId}`
+      const groupName = group?.name || `Grupo ${phase.groupId}`
 
-      const stageIndex = allStagesInTournament.findIndex(s => s.stageId === phase.stageId)
-      const phaseName = `${getTournamentName(phase.tournamentId)} - Fase ${stageIndex + 1} - ${group?.name || `Grupo ${phase.groupId}`}`
+      const phaseName = `${tournamentName} - ${stageName} - ${groupName}`
 
       return {
         tournamentId: phase.tournamentId,
