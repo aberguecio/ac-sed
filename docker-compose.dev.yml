@@ -15,7 +15,9 @@ services:
       retries: 10
 
   web:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
     restart: unless-stopped
     ports:
       - "3000:3000"
@@ -23,6 +25,12 @@ services:
       db:
         condition: service_healthy
     env_file: .env
+    environment:
+      - WATCHPACK_POLLING=true
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
 
   cron:
     image: alpine:3.19
