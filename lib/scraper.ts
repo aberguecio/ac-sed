@@ -286,28 +286,46 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
   // Process matches from all match days
   console.log('💾 Processing matches...')
   const newMatches: Match[] = []
-  const allMatches = Array.isArray(matchDays)
-    ? matchDays.flatMap((md: any) => md.matches || [])
-    : []
-  console.log(`  Found ${allMatches.length} total matches`)
 
-  for (const match of allMatches) {
-    const matchId = String(match.id)
-    const homeTeam = match.homeTeam?.name || 'Unknown'
-    const awayTeam = match.awayTeam?.name || 'Unknown'
+  if (!Array.isArray(matchDays)) {
+    console.log('  No match days found')
+    return newMatches
+  }
 
-    const matchData = {
-      tournamentId,
-      stageId,
-      groupId: match.groupId || acsedGroupId,
-      homeTeam,
-      awayTeam,
-      homeScore: match.homeScore,
-      awayScore: match.awayScore,
-      date: match.matchSchedule?.schedule ? new Date() : new Date(),
-      roundName: match.group?.name || null,
-      leagueMatchId: matchId,
-    }
+  let totalMatches = 0
+  for (const matchDay of matchDays) {
+    const matches = matchDay.matches || []
+    totalMatches += matches.length
+
+    for (const match of matches) {
+      const matchId = String(match.id)
+      const homeTeam = match.homeTeam?.name || 'Unknown'
+      const awayTeam = match.awayTeam?.name || 'Unknown'
+
+      // Combine matchDay.date with matchSchedule.schedule to get full datetime
+      let matchDate = new Date()
+      if (matchDay.date) {
+        const dayDate = new Date(matchDay.date)
+        if (match.matchSchedule?.schedule) {
+          // schedule is in format "HH:MM" (e.g., "20:00")
+          const [hours, minutes] = match.matchSchedule.schedule.split(':').map(Number)
+          dayDate.setHours(hours, minutes, 0, 0)
+        }
+        matchDate = dayDate
+      }
+
+      const matchData = {
+        tournamentId,
+        stageId,
+        groupId: match.groupId || acsedGroupId,
+        homeTeam,
+        awayTeam,
+        homeScore: match.homeScore,
+        awayScore: match.awayScore,
+        date: matchDate,
+        roundName: match.group?.name || null,
+        leagueMatchId: matchId,
+      }
 
     const existing = await prisma.match.findUnique({
       where: { leagueMatchId: matchId },
@@ -337,11 +355,14 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
       }
     }
 
-    // Fetch and save events (goals and cards) for played matches
-    if (match.homeScore !== null && match.awayScore !== null) {
-      await saveMatchEvents(savedMatch.id, Number(matchId))
+      // Fetch and save events (goals and cards) for played matches
+      if (match.homeScore !== null && match.awayScore !== null) {
+        await saveMatchEvents(savedMatch.id, Number(matchId))
+      }
     }
   }
+
+  console.log(`  Found ${totalMatches} total matches`)
 
   return newMatches
 }

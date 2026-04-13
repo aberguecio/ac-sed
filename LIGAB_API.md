@@ -107,10 +107,18 @@ Ejemplo: `GET /v1/stages/396/match-days?filter={"include":[{"relation":"matches"
 
 **Retorna:**
 Array de jornadas (match-days), cada una con su array de partidos:
+
+**IMPORTANTE:** Para obtener la fecha/hora completa de un partido:
+- `matchDay.date` contiene la **fecha del día** (`"2026-04-13T00:00:00.000Z"`)
+- `match.matchSchedule.schedule` contiene solo la **hora** (`"20:00"`)
+- Hay que combinar ambos para obtener la fecha/hora exacta del partido
+- Algunos partidos tienen `matchSchedule: null` cuando aún no se asigna la hora
+
 ```json
 [
   {
     "id": 1763,
+    "date": "2026-04-13T00:00:00.000Z",  // ⚠️ Fecha del día de esta jornada
     "matches": [
       {
         "id": 44978,
@@ -132,7 +140,7 @@ Array de jornadas (match-days), cada una con su array de partidos:
         },
         "matchSchedule": {
           "id": 7,
-          "schedule": "20:00"
+          "schedule": "20:00"  // ⚠️ Solo hora (HH:MM), NO fecha completa
         },
         "group": {
           "id": 2295,

@@ -1,32 +1,55 @@
 services:
   db:
     image: postgres:16-alpine
+    container_name: acsed-db
     restart: unless-stopped
+    networks:
+      - proxy
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_HOST_AUTH_METHOD=md5
+      - POSTGRES_INITDB_ARGS=--auth-host=md5
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 5s
+      interval: 30s
       timeout: 5s
-      retries: 10
+      retries: 5
 
   web:
     build: .
+    container_name: acsed-web
     restart: unless-stopped
-    ports:
-      - "3000:3000"
+    networks:
+      - proxy
     depends_on:
       db:
         condition: service_healthy
     env_file: .env
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 30s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.acsed.rule=Host(`acsed.cl`)"
+      - "traefik.http.routers.acsed.entrypoints=websecure"
+      - "traefik.http.routers.acsed.tls=true"
+      - "traefik.http.services.acsed.loadbalancer.server.port=3000"
+      - "traefik.docker.network=proxy"
+      - "monitoring.url=https://acsed.cl"
 
   cron:
     image: alpine:3.19
+    container_name: acsed-cron
     restart: unless-stopped
+    networks:
+      - proxy
     depends_on:
       - web
     env_file: .env
@@ -37,5 +60,10 @@ services:
         crond -f -l 6
       "
 
+networks:
+  proxy:
+    external: true
+
 volumes:
-  pgdata:
+  postgres_data:
+    driver: local
