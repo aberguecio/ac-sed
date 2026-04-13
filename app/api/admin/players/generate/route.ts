@@ -35,12 +35,20 @@ export async function POST(request: Request) {
     // Create a new roster player with the scraped player's name
     const fullName = `${scrapedPlayer.firstName} ${scrapedPlayer.lastName}`.trim()
 
+    // Generate random stats between 30 and 65
+    const randomStat = () => Math.floor(Math.random() * 36) + 30 // Random between 30-65
+
     const newPlayer = await prisma.player.create({
       data: {
         name: fullName,
         leaguePlayerId: scrapedPlayerId,
         active: true,
-        // Leave other fields as defaults/null to be filled in later
+        statRitmo: randomStat(),
+        statDisparo: randomStat(),
+        statPase: randomStat(),
+        statRegate: randomStat(),
+        statDefensa: randomStat(),
+        statFisico: randomStat(),
       }
     })
 

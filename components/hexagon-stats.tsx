@@ -35,10 +35,12 @@ function toPolygon(points: [number, number][]) {
 }
 
 export function HexagonStats({ stats, size = 160 }: Props) {
-  const cx = size / 2
-  const cy = size / 2
-  const maxR = size * 0.38
-  const labelR = size * 0.49
+  const padding = size * 0.12 // Add padding for labels
+  const totalSize = size + padding * 2
+  const cx = totalSize / 2
+  const cy = totalSize / 2
+  const maxR = size * 0.35
+  const labelR = size * 0.48
 
   const values = STATS.map(({ key }) => {
     const v = stats[key]
@@ -64,7 +66,7 @@ export function HexagonStats({ stats, size = 160 }: Props) {
   })
 
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+    <svg width={size} height={size} viewBox={`0 0 ${totalSize} ${totalSize}`}>
       {/* Background rings */}
       {rings.map((pct, ri) => {
         const pts = hexPoints(cx, cy, maxR * pct)
@@ -113,13 +115,35 @@ export function HexagonStats({ stats, size = 160 }: Props) {
       {STATS.map(({ label }, i) => {
         const [lx, ly] = labelPositions[i]
         const v = values[i]
+
+        // Adjust positions based on angle to prevent overlap
+        const isTop = i === 0
+        const isBottom = i === 3
+
+        let labelY = ly
+        let valueY = ly
+
+        if (isTop) {
+          // Top: label above, value below - keep within bounds
+          labelY = ly - size * 0.04
+          valueY = ly + size * 0.04
+        } else if (isBottom) {
+          // Bottom: label above, value below - keep within bounds
+          labelY = ly - size * 0.04
+          valueY = ly + size * 0.04
+        } else {
+          // Sides: label above, value below
+          labelY = ly - size * 0.04
+          valueY = ly + size * 0.04
+        }
+
         return (
           <g key={i}>
             <text
               x={lx}
-              y={ly - 3}
+              y={labelY}
               textAnchor="middle"
-              dominantBaseline="auto"
+              dominantBaseline="middle"
               fontSize={size * 0.068}
               fontWeight="700"
               fill="#C8A96E"
@@ -129,10 +153,10 @@ export function HexagonStats({ stats, size = 160 }: Props) {
             </text>
             <text
               x={lx}
-              y={ly + size * 0.072}
+              y={valueY}
               textAnchor="middle"
-              dominantBaseline="auto"
-              fontSize={size * 0.072}
+              dominantBaseline="middle"
+              fontSize={size * 0.075}
               fontWeight="600"
               fill="#FAF7F0"
               fontFamily="sans-serif"

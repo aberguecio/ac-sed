@@ -6,9 +6,47 @@ export const metadata: Metadata = { title: 'Plantel — AC SED' }
 export const revalidate = 300
 
 export default async function PlayersPage() {
+  // Get current tournament/phase info
+  const latestMatch = await prisma.match.findFirst({
+    orderBy: { date: 'desc' },
+    select: { tournamentId: true, stageId: true, groupId: true }
+  })
+
   const players = await prisma.player.findMany({
     where: { active: true },
+    include: {
+      goals: {
+        select: {
+          id: true,
+          match: {
+            select: {
+              tournamentId: true,
+              stageId: true,
+              groupId: true
+            }
+          }
+        }
+      }
+    },
     orderBy: [{ number: 'asc' }, { name: 'asc' }],
+  })
+
+  // Calculate stats for each player
+  const playersWithStats = players.map(player => {
+    const totalGoals = player.goals.length
+    const currentPhaseGoals = latestMatch
+      ? player.goals.filter(g =>
+          g.match.tournamentId === latestMatch.tournamentId &&
+          g.match.stageId === latestMatch.stageId &&
+          g.match.groupId === latestMatch.groupId
+        ).length
+      : 0
+
+    return {
+      ...player,
+      totalGoals,
+      currentPhaseGoals
+    }
   })
 
   return (
@@ -22,7 +60,7 @@ export default async function PlayersPage() {
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-5">
-          {players.map((player) => (
+          {playersWithStats.map((player) => (
             <PlayerCard key={player.id} player={player} />
           ))}
         </div>

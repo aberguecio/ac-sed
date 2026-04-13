@@ -461,12 +461,12 @@ export default function AdminPlayersPage() {
                                 if (scrapedId) linkPlayer(p.id, scrapedId)
                               }}
                               disabled={linkingPlayerId === p.id}
-                              className="text-xs border border-gray-300 rounded px-2 py-1"
+                              className="text-xs border border-gray-300 rounded px-2 py-1 max-w-[180px] truncate"
                             >
                               <option value="">Vincular...</option>
                               {allUnlinkedScraped.map((sp) => (
                                 <option key={sp.id} value={sp.id}>
-                                  {sp.firstName} {sp.lastName} ({sp.teamName})
+                                  {sp.firstName} {sp.lastName}
                                 </option>
                               ))}
                             </select>

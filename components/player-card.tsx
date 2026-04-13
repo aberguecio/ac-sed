@@ -2,7 +2,10 @@ import type { Player } from '@prisma/client'
 import { HexagonStats } from './hexagon-stats'
 
 interface Props {
-  player: Player
+  player: Player & {
+    totalGoals?: number
+    currentPhaseGoals?: number
+  }
 }
 
 function getInitials(name: string) {
@@ -73,10 +76,28 @@ export function PlayerCard({ player }: Props) {
         <h3 className="font-bold text-navy text-base leading-tight">{player.name}</h3>
         {posLabel && <p className="text-sm text-wheat mt-1">{posLabel}</p>}
         {player.bio && <p className="text-xs text-gray-500 mt-2 line-clamp-2">{player.bio}</p>}
+
+        {/* Goals stats */}
+        {(player.totalGoals !== undefined || player.currentPhaseGoals !== undefined) && (
+          <div className="mt-3 space-y-1 text-xs">
+            {player.totalGoals !== undefined && (
+              <div className="flex justify-between items-center">
+                <span className="text-gray-500">Goles históricos:</span>
+                <span className="font-bold text-navy">{player.totalGoals}</span>
+              </div>
+            )}
+            {player.currentPhaseGoals !== undefined && (
+              <div className="flex justify-between items-center">
+                <span className="text-gray-500">Goles en fase:</span>
+                <span className="font-bold text-wheat">{player.currentPhaseGoals}</span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {showStats && (
-        <div className="bg-navy px-2 pb-4 flex justify-center">
+        <div className="bg-navy px-2 pt-1 pb-1 flex justify-center">
           <HexagonStats
             stats={{
               statRitmo: player.statRitmo,
@@ -86,7 +107,7 @@ export function PlayerCard({ player }: Props) {
               statDefensa: player.statDefensa,
               statFisico: player.statFisico,
             }}
-            size={160}
+            size={180}
           />
         </div>
       )}
