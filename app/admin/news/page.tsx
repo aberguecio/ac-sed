@@ -19,7 +19,8 @@ interface ArticleDetail {
   content: string
   imageUrl: string | null
   generatedAt: string
-  match: { date: string } | null
+  match: { id: number; date: string } | null
+  matchId?: number
   aiContext?: {
     matchDate: string
     matchInfo: string
@@ -59,6 +60,7 @@ export default function AdminNewsPage() {
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [uploadingImage, setUploadingImage] = useState(false)
+  const [generatingVsImage, setGeneratingVsImage] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [sendingId, setSendingId] = useState<number | null>(null)
@@ -139,6 +141,37 @@ export default function AdminNewsPage() {
     if (!file) return
     setImageFile(file)
     setImagePreview(URL.createObjectURL(file))
+  }
+
+  async function generateVsImage() {
+    if (!editingArticle?.match?.id && !editingArticle?.matchId) {
+      alert('No se puede generar imagen VS: no hay partido asociado')
+      return
+    }
+
+    setGeneratingVsImage(true)
+    try {
+      const res = await fetch('/api/news/generate-vs-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ matchId: editingArticle.match?.id || editingArticle.matchId })
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        setEditImageUrl(data.imageUrl)
+        setImageFile(null)
+        setImagePreview(null)
+        if (fileInputRef.current) fileInputRef.current.value = ''
+      } else {
+        alert('Error generando imagen VS')
+      }
+    } catch (err) {
+      console.error('Error generating VS image:', err)
+      alert('Error generando imagen VS')
+    } finally {
+      setGeneratingVsImage(false)
+    }
   }
 
   async function saveEdit() {
@@ -388,13 +421,26 @@ export default function AdminNewsPage() {
                       </button>
                     </div>
                   )}
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    onChange={handleImageChange}
-                    className="block text-sm text-gray-500 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-wheat file:text-navy hover:file:bg-wheat-light"
-                  />
+                  <div className="flex items-center gap-2">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={handleImageChange}
+                      className="block text-sm text-gray-500 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-wheat file:text-navy hover:file:bg-wheat-light"
+                    />
+                    {(editingArticle?.match?.id || editingArticle?.matchId) && (
+                      <button
+                        type="button"
+                        onClick={generateVsImage}
+                        disabled={generatingVsImage}
+                        className="px-3 py-1.5 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Generar imagen VS con los logos de los equipos"
+                      >
+                        {generatingVsImage ? 'Generando...' : 'Generar imagen VS'}
+                      </button>
+                    )}
+                  </div>
                   <p className="text-xs text-gray-400 mt-1">JPG, PNG o WebP · máx. 5MB</p>
                 </div>
 

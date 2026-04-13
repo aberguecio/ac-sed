@@ -191,11 +191,43 @@ GET /v1/teams
     "name": "The Lat",
     "isActive": true,
     "description": "...",
-    "teamLogoUrl": "...",
+    "teamLogoUrl": "https://liga-b.nyc3.digitaloceanspaces.com/team/82/50x50_UUID.jpeg",
     "logoMigrated": false
   }
 ]
 ```
+
+### Logos de Equipos
+
+Los logos están disponibles en DigitalOcean Spaces con dos formatos:
+
+**1. Sin prefijo de tamaño (Original - 1024x1024):**
+```
+https://liga-b.nyc3.digitaloceanspaces.com/team/{teamId}/{UUID}.jpeg
+```
+
+**2. Con prefijo de tamaño (Redimensionado):**
+```
+https://liga-b.nyc3.digitaloceanspaces.com/team/{teamId}/{size}_{UUID}.jpeg
+```
+
+**Tamaños disponibles:**
+- Sin prefijo - `1024x1024` - Original/Alta resolución
+- `28x28` - Pequeño
+- `48x48` - Mediano
+- `50x50` - Default (usado en teamLogoUrl del API)
+- `80x80` - Grande
+
+**Ejemplo:**
+- Team ID: 3020
+- UUID: c161d4f3-2ddc-4270-9097-dcea7949c1cb.png
+- URLs disponibles:
+  - `https://liga-b.nyc3.digitaloceanspaces.com/team/3020/c161d4f3-2ddc-4270-9097-dcea7949c1cb.png` (1024x1024)
+  - `https://liga-b.nyc3.digitaloceanspaces.com/team/3020/28x28_c161d4f3-2ddc-4270-9097-dcea7949c1cb.png`
+  - `https://liga-b.nyc3.digitaloceanspaces.com/team/3020/50x50_c161d4f3-2ddc-4270-9097-dcea7949c1cb.png`
+  - `https://liga-b.nyc3.digitaloceanspaces.com/team/3020/80x80_c161d4f3-2ddc-4270-9097-dcea7949c1cb.png`
+
+**Nota:** El `teamLogoUrl` en las respuestas del API devuelve la URL sin prefijo (1024x1024). Para obtener tamaños específicos, agrega el prefijo `{size}_` antes del UUID.
 
 **Filtros disponibles:**
 - `?filter={"limit": 10}` - Limitar resultados

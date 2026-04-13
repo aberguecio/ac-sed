@@ -192,6 +192,46 @@ async function saveMatchEvents(matchId: number, leagueMatchId: number) {
   }
 }
 
+// Helper to extract logo URL from full URL
+function extractLogoUrl(fullUrl: string | null | undefined): string | null {
+  if (!fullUrl) return null
+
+  // URLs come in two formats:
+  // 1. Without size: https://liga-b.nyc3.digitaloceanspaces.com/team/{teamId}/{uuid}.jpeg
+  // 2. With size: https://liga-b.nyc3.digitaloceanspaces.com/team/{teamId}/{size}_{uuid}.jpeg
+
+  // Try to match format with size prefix first
+  let match = fullUrl.match(/\/team\/(\d+)\/\d+x\d+_(.+\.(?:jpeg|jpg|png))$/i)
+  if (match) {
+    return match[2] // Return UUID part without size prefix
+  }
+
+  // Try to match format without size prefix
+  match = fullUrl.match(/\/team\/(\d+)\/([a-f0-9-]+\.(?:jpeg|jpg|png))$/i)
+  if (match) {
+    return match[2] // Return the UUID filename
+  }
+
+  return null
+}
+
+// Helper to save or update team
+async function saveTeam(teamId: number, teamName: string, logoUrl: string | null) {
+  await prisma.team.upsert({
+    where: { id: teamId },
+    create: {
+      id: teamId,
+      name: teamName,
+      logoUrl: extractLogoUrl(logoUrl),
+    },
+    update: {
+      name: teamName,
+      logoUrl: extractLogoUrl(logoUrl) || undefined,
+      updatedAt: new Date(),
+    }
+  })
+}
+
 async function processSingleStage(tournamentId: number, stageId: number): Promise<Match[]> {
   // Get groups for this stage
   console.log(`🔍 Fetching groups for stage ${stageId}...`)
@@ -232,7 +272,15 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
 
   // Process standings from AC SED's group only
   if (Array.isArray(standings) && standings.length > 0) {
-    console.log(`💾 Saving ${standings.length} standings...`)
+    console.log(`💾 Saving ${standings.length} teams and standings...`)
+
+    // First, save all teams
+    for (const s of standings) {
+      if (s.team?.id && s.team?.name) {
+        await saveTeam(s.team.id, s.team.name, s.team.teamLogoUrl)
+      }
+    }
+
     // Delete only standings for this specific tournament/stage/group
     await prisma.standing.deleteMany({
       where: {
@@ -247,6 +295,7 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
       groupId: acsedGroupId,
       groupName: acsedGroupName,
       teamName: s.team?.name || 'Unknown',
+      teamId: s.team?.id || null,
       position: s.team?.id === ACSED_TEAM_ID ? 1 : 99, // Priorizar AC SED
       played: s.played || 0,
       won: s.won || 0,
@@ -261,7 +310,7 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
     // Asignar posiciones correctas
     standingsData.forEach((s, i) => (s.position = i + 1))
     await prisma.standing.createMany({ data: standingsData })
-    console.log('✓ Standings saved')
+    console.log('✓ Teams and standings saved')
   }
 
   // Process top scorers
@@ -299,8 +348,18 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
 
     for (const match of matches) {
       const matchId = String(match.id)
+      const homeTeamId = match.homeTeam?.id || null
+      const awayTeamId = match.awayTeam?.id || null
       const homeTeam = match.homeTeam?.name || 'Unknown'
       const awayTeam = match.awayTeam?.name || 'Unknown'
+
+      // Save teams if they have valid IDs
+      if (homeTeamId && homeTeam !== 'Unknown') {
+        await saveTeam(homeTeamId, homeTeam, match.homeTeam?.teamLogoUrl)
+      }
+      if (awayTeamId && awayTeam !== 'Unknown') {
+        await saveTeam(awayTeamId, awayTeam, match.awayTeam?.teamLogoUrl)
+      }
 
       // Combine matchDay.date with matchSchedule.schedule to get full datetime
       let matchDate = new Date()
@@ -320,6 +379,8 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
         groupId: match.groupId || acsedGroupId,
         homeTeam,
         awayTeam,
+        homeTeamId,
+        awayTeamId,
         homeScore: match.homeScore,
         awayScore: match.awayScore,
         date: matchDate,
@@ -345,12 +406,19 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
       savedMatch = existing
       if (
         existing.homeScore !== match.homeScore ||
-        existing.awayScore !== match.awayScore
+        existing.awayScore !== match.awayScore ||
+        existing.homeTeamId !== homeTeamId ||
+        existing.awayTeamId !== awayTeamId
       ) {
-        // Update if scores changed
+        // Update if scores or team IDs changed
         savedMatch = await prisma.match.update({
           where: { leagueMatchId: matchId },
-          data: { homeScore: match.homeScore, awayScore: match.awayScore },
+          data: {
+            homeScore: match.homeScore,
+            awayScore: match.awayScore,
+            homeTeamId: homeTeamId,
+            awayTeamId: awayTeamId
+          },
         })
       }
     }

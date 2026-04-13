@@ -7,14 +7,32 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Team {
+  id           Int      @id // Liga B API team ID
+  name         String
+  logoUrl      String?  // Base URL sin el prefijo de tamaño (e.g., "UUID.jpeg")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  homeMatches  Match[]  @relation("HomeTeam")
+  awayMatches  Match[]  @relation("AwayTeam")
+  standings    Standing[]
+  scorers      LeagueScorer[]
+
+  @@index([name])
+}
+
 model Match {
   id            Int           @id @default(autoincrement())
   tournamentId  Int?
   stageId       Int?
   groupId       Int?
   date          DateTime
-  homeTeam      String
-  awayTeam      String
+  homeTeam      String        // Mantener para compatibilidad
+  awayTeam      String        // Mantener para compatibilidad
+  homeTeamId    Int?          // Nueva FK
+  awayTeamId    Int?          // Nueva FK
   homeScore     Int?
   awayScore     Int?
   roundName     String?
@@ -24,7 +42,13 @@ model Match {
   goals         MatchGoal[]
   cards         MatchCard[]
 
+  // Relations
+  homeTeamRef   Team?         @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  awayTeamRef   Team?         @relation("AwayTeam", fields: [awayTeamId], references: [id])
+
   @@index([tournamentId, stageId, groupId])
+  @@index([homeTeamId])
+  @@index([awayTeamId])
 }
 
 model Standing {
@@ -33,7 +57,8 @@ model Standing {
   stageId      Int
   groupId      Int
   groupName    String
-  teamName     String
+  teamName     String   // Mantener para compatibilidad
+  teamId       Int?     // Nueva FK
   position     Int
   played       Int
   won          Int
@@ -44,19 +69,28 @@ model Standing {
   points       Int
   updatedAt    DateTime @updatedAt
 
+  // Relations
+  team         Team?    @relation(fields: [teamId], references: [id])
+
   @@unique([tournamentId, stageId, groupId, teamName])
   @@index([tournamentId, stageId, groupId])
+  @@index([teamId])
 }
 
 model LeagueScorer {
   id           Int      @id @default(autoincrement())
   tournamentId Int
   playerName   String
-  teamName     String
+  teamName     String   // Mantener para compatibilidad
+  teamId       Int?     // Nueva FK
   goals        Int
   updatedAt    DateTime @updatedAt
 
+  // Relations
+  team         Team?    @relation(fields: [teamId], references: [id])
+
   @@index([tournamentId])
+  @@index([teamId])
 }
 
 model Player {

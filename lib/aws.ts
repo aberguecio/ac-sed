@@ -21,7 +21,7 @@ interface Subscriber {
 function buildEmailHtml(article: Article, subscriber: Subscriber, siteUrl: string): string {
   const articleUrl = `${siteUrl}/news/${article.slug}`
   const unsubscribeUrl = `${siteUrl}/unsubscribe?token=${subscriber.unsubscribeToken}`
-  const excerpt = article.content.replace(/\n+/g, ' ').slice(0, 300).trim() + '...'
+  const excerpt = article.content.replace(/\n+/g, ' ').slice(0, 600).trim() + '...'
 
   const imageBlock = article.imageUrl
     ? `<img src="${article.imageUrl}" alt="${article.title}" style="width:100%;max-width:600px;border-radius:8px;margin-bottom:24px;display:block;" />`
