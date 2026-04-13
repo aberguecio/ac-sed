@@ -51,7 +51,7 @@ export default async function NewsPage({ searchParams }: Props) {
   }
 
   // Build phase groups with news
-  const phaseGroups: PhaseGroup[] = await Promise.all(
+  const phaseGroupsRaw = await Promise.all(
     phases.map(async (phase) => {
       // Get all matches in this phase to determine date range
       const phaseMatches = await prisma.match.findMany({
@@ -119,7 +119,7 @@ export default async function NewsPage({ searchParams }: Props) {
     })
   )
 
-  const validPhaseGroups = phaseGroups.filter((g): g is PhaseGroup => g !== null)
+  const validPhaseGroups = phaseGroupsRaw.filter((g): g is PhaseGroup => g !== null)
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-10">
