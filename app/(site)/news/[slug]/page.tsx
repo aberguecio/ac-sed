@@ -70,10 +70,6 @@ export default async function NewsDetailPage({ params }: Props) {
             paragraph.trim() ? <p key={i}>{paragraph}</p> : null
           )}
         </div>
-
-        <footer className="mt-10 pt-6 border-t border-cream-dark/30 text-xs text-gray-400">
-          Generado con IA · {article.aiProvider}
-        </footer>
       </article>
     </div>
   )
