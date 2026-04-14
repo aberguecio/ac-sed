@@ -1,5 +1,7 @@
 import type { Standing, Team } from '@prisma/client'
 import clsx from 'clsx'
+import { isACSED } from '@/lib/team-utils'
+import { TeamLogo } from './team-logo'
 
 interface Props {
   standings: (Standing & { team: Team })[]
@@ -30,7 +32,7 @@ export function StandingsTable({ standings, highlightTeam = 'ACSED' }: Props) {
         <tbody>
           {standings.map((s) => {
             const teamName = s.team.name
-            const isAcsed = teamName.toUpperCase().includes(highlightTeam)
+            const isAcsed = isACSED(teamName)
             return (
               <tr
                 key={s.id}
@@ -41,7 +43,17 @@ export function StandingsTable({ standings, highlightTeam = 'ACSED' }: Props) {
               >
                 <td className="px-3 py-2 text-gray-500">{s.position}</td>
                 <td className="px-3 py-2">
-                  {isAcsed ? <span className="text-navy font-bold">{teamName}</span> : teamName}
+                  <div className="flex items-center gap-2">
+                    <TeamLogo
+                      teamId={s.team.id}
+                      teamName={teamName}
+                      logoUrl={s.team.logoUrl}
+                      size="sm"
+                      className="h-5 w-5 md:h-7 md:w-7"
+                      textSize="text-[8px] md:text-[9px]"
+                    />
+                    {isAcsed ? <span className="text-navy font-bold">{teamName}</span> : teamName}
+                  </div>
                 </td>
                 <td className="px-3 py-2 text-center">{s.played}</td>
                 <td className="px-3 py-2 text-center">{s.won}</td>

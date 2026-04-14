@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { StandingsTable } from "@/components/standings-table";
 import { NewsCard } from "@/components/news-card";
+import { TeamLogo } from "@/components/team-logo";
 import Link from "next/link";
 import { ACSED_TEAM_NAME, isACSED } from "@/lib/team-utils";
 
@@ -184,19 +185,14 @@ export default async function HomePage() {
                 <div className="flex md:hidden flex-col gap-6">
                   {/* Home Team */}
                   <div className="flex items-center justify-center gap-3">
-                    {isACSED(lastMatch.homeTeam?.name) ? (
-                      <img
-                        src="/ACSED-transaparent.webp"
-                        alt="AC SED"
-                        className="h-16 w-auto"
-                      />
-                    ) : lastMatch.homeTeam?.logoUrl ? (
-                      <img
-                        src={`https://liga-b.nyc3.digitaloceanspaces.com/team/${lastMatch.homeTeam.id}/${lastMatch.homeTeam.logoUrl}`}
-                        alt={lastMatch.homeTeam.name}
-                        className="h-16 w-16 object-contain"
-                      />
-                    ) : null}
+                    <TeamLogo
+                      teamId={lastMatch.homeTeam?.id ?? 0}
+                      teamName={lastMatch.homeTeam?.name ?? "TBD"}
+                      logoUrl={lastMatch.homeTeam?.logoUrl ?? null}
+                      size="lg"
+                      className="h-12 w-12 md:h-16 md:w-16"
+                      textSize="text-[16px] md:text-[20px]"
+                    />
                     <p
                       className={`text-xl font-bold text-center ${
                         isACSED(lastMatch.homeTeam?.name)
@@ -226,19 +222,14 @@ export default async function HomePage() {
 
                   {/* Away Team */}
                   <div className="flex items-center justify-center gap-3">
-                    {isACSED(lastMatch.awayTeam?.name) ? (
-                      <img
-                        src="/ACSED-transaparent.webp"
-                        alt="AC SED"
-                        className="h-16 w-auto"
-                      />
-                    ) : lastMatch.awayTeam?.logoUrl ? (
-                      <img
-                        src={`https://liga-b.nyc3.digitaloceanspaces.com/team/${lastMatch.awayTeam.id}/${lastMatch.awayTeam.logoUrl}`}
-                        alt={lastMatch.awayTeam.name}
-                        className="h-16 w-16 object-contain"
-                      />
-                    ) : null}
+                    <TeamLogo
+                      teamId={lastMatch.awayTeam?.id ?? 0}
+                      teamName={lastMatch.awayTeam?.name ?? "TBD"}
+                      logoUrl={lastMatch.awayTeam?.logoUrl ?? null}
+                      size="lg"
+                      className="h-12 w-12 md:h-16 md:w-16"
+                      textSize="text-[16px] md:text-[20px]"
+                    />
                     <p
                       className={`text-xl font-bold text-center ${
                         isACSED(lastMatch.awayTeam?.name)
@@ -263,19 +254,14 @@ export default async function HomePage() {
                     >
                       {lastMatch.homeTeam?.name ?? "TBD"}
                     </p>
-                    {isACSED(lastMatch.homeTeam?.name) ? (
-                      <img
-                        src="/ACSED-transaparent.webp"
-                        alt="AC SED"
-                        className="h-28 w-auto"
-                      />
-                    ) : lastMatch.homeTeam?.logoUrl ? (
-                      <img
-                        src={`https://liga-b.nyc3.digitaloceanspaces.com/team/${lastMatch.homeTeam.id}/${lastMatch.homeTeam.logoUrl}`}
-                        alt={lastMatch.homeTeam.name}
-                        className="h-28 w-28 object-contain"
-                      />
-                    ) : null}
+                    <TeamLogo
+                      teamId={lastMatch.homeTeam?.id ?? 0}
+                      teamName={lastMatch.homeTeam?.name ?? "TBD"}
+                      logoUrl={lastMatch.homeTeam?.logoUrl ?? null}
+                      size="lg"
+                      className="h-20 w-20 md:h-28 md:w-28"
+                      textSize="text-[24px] md:text-[36px]"
+                    />
                   </div>
                   <div className="text-center px-8 pt-2">
                     <div className="bg-wheat rounded-2xl px-8 py-6 min-w-[160px]">
@@ -292,19 +278,14 @@ export default async function HomePage() {
                     </p>
                   </div>
                   <div className="flex-1 flex items-center justify-start gap-4">
-                    {isACSED(lastMatch.awayTeam?.name) ? (
-                      <img
-                        src="/ACSED-transaparent.webp"
-                        alt="AC SED"
-                        className="h-28 w-auto"
-                      />
-                    ) : lastMatch.awayTeam?.logoUrl ? (
-                      <img
-                        src={`https://liga-b.nyc3.digitaloceanspaces.com/team/${lastMatch.awayTeam.id}/${lastMatch.awayTeam.logoUrl}`}
-                        alt={lastMatch.awayTeam.name}
-                        className="h-28 w-28 object-contain"
-                      />
-                    ) : null}
+                    <TeamLogo
+                      teamId={lastMatch.awayTeam?.id ?? 0}
+                      teamName={lastMatch.awayTeam?.name ?? "TBD"}
+                      logoUrl={lastMatch.awayTeam?.logoUrl ?? null}
+                      size="lg"
+                      className="h-20 w-20 md:h-28 md:w-28"
+                      textSize="text-[24px] md:text-[36px]"
+                    />
                     <p
                       className={`text-2xl md:text-3xl font-bold ${
                         isACSED(lastMatch.awayTeam?.name)
@@ -383,19 +364,14 @@ export default async function HomePage() {
                             <div className="flex items-center gap-2 md:gap-3">
                               {/* Home Team */}
                               <div className="flex items-center gap-2 flex-1 min-w-0">
-                                {isAcsedHome ? (
-                                  <img
-                                    src="/ACSED-transaparent.webp"
-                                    alt="AC SED"
-                                    className="h-10 w-10 md:h-12 md:w-12 object-contain flex-shrink-0"
-                                  />
-                                ) : m.homeTeam?.logoUrl ? (
-                                  <img
-                                    src={`https://liga-b.nyc3.digitaloceanspaces.com/team/${m.homeTeam.id}/80x80_${m.homeTeam.logoUrl}`}
-                                    alt={homeTeamName}
-                                    className="h-10 w-10 md:h-12 md:w-12 object-contain flex-shrink-0"
-                                  />
-                                ) : null}
+                                <TeamLogo
+                                  teamId={m.homeTeam?.id ?? 0}
+                                  teamName={homeTeamName}
+                                  logoUrl={m.homeTeam?.logoUrl ?? null}
+                                  size="md"
+                                  className="h-12 w-12 md:h-16 md:w-16"
+                                  textSize="text-[16px] md:text-[20px]"
+                                />
                                 <span
                                   className={`text-xs md:text-sm font-medium truncate ${
                                     isAcsedHome
@@ -422,19 +398,14 @@ export default async function HomePage() {
                                 >
                                   {awayTeamName}
                                 </span>
-                                {isAcsedAway ? (
-                                  <img
-                                    src="/ACSED-transaparent.webp"
-                                    alt="AC SED"
-                                    className="h-10 w-10 md:h-12 md:w-12 object-contain flex-shrink-0"
-                                  />
-                                ) : m.awayTeam?.logoUrl ? (
-                                  <img
-                                    src={`https://liga-b.nyc3.digitaloceanspaces.com/team/${m.awayTeam.id}/80x80_${m.awayTeam.logoUrl}`}
-                                    alt={awayTeamName}
-                                    className="h-10 w-10 md:h-12 md:w-12 object-contain flex-shrink-0"
-                                  />
-                                ) : null}
+                                <TeamLogo
+                                  teamId={m.awayTeam?.id ?? 0}
+                                  teamName={awayTeamName}
+                                  logoUrl={m.awayTeam?.logoUrl ?? null}
+                                  size="md"
+                                  className="h-12 w-12 md:h-16 md:w-16"
+                                  textSize="text-[16px] md:text-[20px]"
+                                />
                               </div>
                             </div>
 
@@ -488,19 +459,14 @@ export default async function HomePage() {
                             <div className="flex items-center gap-2 md:gap-3">
                               {/* Home Team */}
                               <div className="flex items-center gap-2 flex-1 min-w-0">
-                                {isAcsedHome ? (
-                                  <img
-                                    src="/ACSED-transaparent.webp"
-                                    alt="AC SED"
-                                    className="h-10 w-10 md:h-12 md:w-12 object-contain flex-shrink-0"
-                                  />
-                                ) : m.homeTeam?.logoUrl ? (
-                                  <img
-                                    src={`https://liga-b.nyc3.digitaloceanspaces.com/team/${m.homeTeam.id}/80x80_${m.homeTeam.logoUrl}`}
-                                    alt={homeTeamName}
-                                    className="h-10 w-10 md:h-12 md:w-12 object-contain flex-shrink-0"
-                                  />
-                                ) : null}
+                                <TeamLogo
+                                  teamId={m.homeTeam?.id ?? 0}
+                                  teamName={homeTeamName}
+                                  logoUrl={m.homeTeam?.logoUrl ?? null}
+                                  size="md"
+                                  className="h-12 w-12 md:h-16 md:w-16"
+                                  textSize="text-[16px] md:text-[20px]"
+                                />
                                 <span
                                   className={`text-xs md:text-sm font-medium truncate ${
                                     isAcsedHome
@@ -527,19 +493,14 @@ export default async function HomePage() {
                                 >
                                   {awayTeamName}
                                 </span>
-                                {isAcsedAway ? (
-                                  <img
-                                    src="/ACSED-transaparent.webp"
-                                    alt="AC SED"
-                                    className="h-10 w-10 md:h-12 md:w-12 object-contain flex-shrink-0"
-                                  />
-                                ) : m.awayTeam?.logoUrl ? (
-                                  <img
-                                    src={`https://liga-b.nyc3.digitaloceanspaces.com/team/${m.awayTeam.id}/80x80_${m.awayTeam.logoUrl}`}
-                                    alt={awayTeamName}
-                                    className="h-10 w-10 md:h-12 md:w-12 object-contain flex-shrink-0"
-                                  />
-                                ) : null}
+                                <TeamLogo
+                                  teamId={m.awayTeam?.id ?? 0}
+                                  teamName={awayTeamName}
+                                  logoUrl={m.awayTeam?.logoUrl ?? null}
+                                  size="md"
+                                  className="h-12 w-12 md:h-16 md:w-16"
+                                  textSize="text-[16px] md:text-[20px]"
+                                />
                               </div>
                             </div>
 
@@ -570,9 +531,6 @@ export default async function HomePage() {
                 <h2 className="text-lg md:text-2xl font-bold text-navy">
                   Nuestro Equipo
                 </h2>
-                <p className="text-sm text-gray-600">
-                  Momentos destacados de la temporada
-                </p>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
                 {["team-1.webp", "team-2.webp", "team-3.webp", "team-4.webp"].map(
