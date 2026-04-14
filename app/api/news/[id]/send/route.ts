@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { sendNewsletterEmail } from '@/lib/aws'
+import { sendNewsletterEmail, type StandingRow } from '@/lib/aws'
+import { isACSED } from '@/lib/team-utils'
 
 export async function POST(
   req: NextRequest,
@@ -13,7 +14,10 @@ export async function POST(
     return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
   }
 
-  const article = await prisma.newsArticle.findUnique({ where: { id: articleId } })
+  const article = await prisma.newsArticle.findUnique({
+    where: { id: articleId },
+    include: { match: true },
+  })
 
   if (!article) {
     return NextResponse.json({ error: 'Noticia no encontrada' }, { status: 404 })
@@ -22,6 +26,27 @@ export async function POST(
   if (!article.published) {
     return NextResponse.json({ error: 'La noticia debe estar publicada antes de enviar el newsletter' }, { status: 400 })
   }
+
+  const tournamentId = article.match?.tournamentId ?? 201
+  const stageId = article.match?.stageId ?? 396
+  const groupId = article.match?.groupId ?? 2300
+
+  const rawStandings = await prisma.standing.findMany({
+    where: { tournamentId, stageId, groupId },
+    include: { team: true },
+    orderBy: { position: 'asc' },
+  })
+
+  const standings: StandingRow[] = rawStandings.map((s) => ({
+    position: s.position,
+    teamName: s.team.name,
+    played: s.played,
+    won: s.won,
+    drawn: s.drawn,
+    lost: s.lost,
+    points: s.points,
+    isACSED: isACSED(s.team.name),
+  }))
 
   const subscribers = await prisma.newsletterSubscriber.findMany({
     where: { active: true },
@@ -35,7 +60,7 @@ export async function POST(
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://acsed.cl'
 
   const sent = await sendNewsletterEmail(
-    { title: article.title, slug: article.slug, content: article.content, imageUrl: article.imageUrl },
+    { title: article.title, slug: article.slug, content: article.content, imageUrl: article.imageUrl, standings },
     subscribers,
     siteUrl
   )
