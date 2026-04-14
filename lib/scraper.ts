@@ -454,6 +454,7 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
         homeScore: match.homeScore,
         awayScore: match.awayScore,
         date: matchDate,
+        venue: match.grounds || null,
         roundName: match.group?.name || null,
         leagueMatchId: matchId,
       }
@@ -477,16 +478,18 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
         existing.homeScore !== match.homeScore ||
         existing.awayScore !== match.awayScore ||
         existing.homeTeamId !== homeTeamId ||
-        existing.awayTeamId !== awayTeamId
+        existing.awayTeamId !== awayTeamId ||
+        existing.venue !== (match.grounds || null)
       ) {
-        // Update if scores or team IDs changed
+        // Update if scores, team IDs, or venue changed
         savedMatch = await prisma.match.update({
           where: { leagueMatchId: matchId },
           data: {
             homeScore: match.homeScore,
             awayScore: match.awayScore,
             homeTeamId: homeTeamId,
-            awayTeamId: awayTeamId
+            awayTeamId: awayTeamId,
+            venue: match.grounds || null
           },
         })
       }

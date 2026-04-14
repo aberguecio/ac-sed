@@ -2,10 +2,9 @@ import { prisma } from '@/lib/db'
 import { StandingsTable } from '@/components/standings-table'
 import { NewsCard } from '@/components/news-card'
 import Link from 'next/link'
+import { ACSED_TEAM_NAME, isACSED } from '@/lib/team-utils'
 
 export const revalidate = 300 // revalidate every 5 min
-
-const ACSED_TEAM_NAME = 'AC Sed'
 
 export default async function HomePage() {
   // Get the most recent tournament and stage
@@ -43,7 +42,7 @@ export default async function HomePage() {
     acsedStanding = standings.find(s => s.team.name === ACSED_TEAM_NAME) || null
   }
 
-  const [latestNews, latestMatches] = await Promise.all([
+  const [latestNews, allPhaseMatches] = await Promise.all([
     prisma.newsArticle.findMany({
       where: { published: true },
       orderBy: { generatedAt: 'desc' },
@@ -54,15 +53,11 @@ export default async function HomePage() {
         tournamentId: latestStanding.tournamentId,
         stageId: latestStanding.stageId,
         groupId: latestStanding.groupId,
-        homeScore: { not: null },
-        awayScore: { not: null },
         OR: [
           { homeTeam: { name: ACSED_TEAM_NAME } },
           { awayTeam: { name: ACSED_TEAM_NAME } },
         ],
       } : {
-        homeScore: { not: null },
-        awayScore: { not: null },
         OR: [
           { homeTeam: { name: ACSED_TEAM_NAME } },
           { awayTeam: { name: ACSED_TEAM_NAME } },
@@ -72,12 +67,15 @@ export default async function HomePage() {
         homeTeam: true,
         awayTeam: true,
       },
-      orderBy: { date: 'desc' },
-      take: 5,
+      orderBy: { date: 'asc' },
     }),
   ])
 
-  const lastMatch = latestMatches[0]
+  // Separar partidos jugados y por jugar
+  const playedMatches = allPhaseMatches.filter(m => m.homeScore !== null && m.awayScore !== null)
+  const upcomingMatches = allPhaseMatches.filter(m => m.homeScore === null || m.awayScore === null)
+
+  const lastMatch = playedMatches[playedMatches.length - 1]
 
   return (
     <>
@@ -151,7 +149,7 @@ export default async function HomePage() {
                 <div className="flex md:hidden flex-col gap-6">
                   {/* Home Team */}
                   <div className="flex items-center justify-center gap-3">
-                    {lastMatch.homeTeam?.name === ACSED_TEAM_NAME ? (
+                    {isACSED(lastMatch.homeTeam?.name) ? (
                       <img src="/ACSED-transaparent.webp" alt="AC SED" className="h-16 w-auto" />
                     ) : lastMatch.homeTeam?.logoUrl ? (
                       <img
@@ -160,7 +158,7 @@ export default async function HomePage() {
                         className="h-16 w-16 object-contain"
                       />
                     ) : null}
-                    <p className={`text-xl font-bold text-center ${lastMatch.homeTeam?.name === ACSED_TEAM_NAME ? 'text-wheat' : 'text-cream'}`}>
+                    <p className={`text-xl font-bold text-center ${isACSED(lastMatch.homeTeam?.name) ? 'text-wheat' : 'text-cream'}`}>
                       {lastMatch.homeTeam?.name ?? 'TBD'}
                     </p>
                   </div>
@@ -179,7 +177,7 @@ export default async function HomePage() {
 
                   {/* Away Team */}
                   <div className="flex items-center justify-center gap-3">
-                    {lastMatch.awayTeam?.name === ACSED_TEAM_NAME ? (
+                    {isACSED(lastMatch.awayTeam?.name) ? (
                       <img src="/ACSED-transaparent.webp" alt="AC SED" className="h-16 w-auto" />
                     ) : lastMatch.awayTeam?.logoUrl ? (
                       <img
@@ -188,7 +186,7 @@ export default async function HomePage() {
                         className="h-16 w-16 object-contain"
                       />
                     ) : null}
-                    <p className={`text-xl font-bold text-center ${lastMatch.awayTeam?.name === ACSED_TEAM_NAME ? 'text-wheat' : 'text-cream'}`}>
+                    <p className={`text-xl font-bold text-center ${isACSED(lastMatch.awayTeam?.name) ? 'text-wheat' : 'text-cream'}`}>
                       {lastMatch.awayTeam?.name ?? 'TBD'}
                     </p>
                   </div>
@@ -197,10 +195,10 @@ export default async function HomePage() {
                 {/* Desktop Layout */}
                 <div className="hidden md:flex items-start justify-between gap-8 -mt-2">
                   <div className="flex-1 flex items-center justify-end gap-4">
-                    <p className={`text-2xl md:text-3xl font-bold ${lastMatch.homeTeam?.name === ACSED_TEAM_NAME ? 'text-wheat' : 'text-cream'}`}>
+                    <p className={`text-2xl md:text-3xl font-bold ${isACSED(lastMatch.homeTeam?.name) ? 'text-wheat' : 'text-cream'}`}>
                       {lastMatch.homeTeam?.name ?? 'TBD'}
                     </p>
-                    {lastMatch.homeTeam?.name === ACSED_TEAM_NAME ? (
+                    {isACSED(lastMatch.homeTeam?.name) ? (
                       <img src="/ACSED-transaparent.webp" alt="AC SED" className="h-28 w-auto" />
                     ) : lastMatch.homeTeam?.logoUrl ? (
                       <img
@@ -221,7 +219,7 @@ export default async function HomePage() {
                     </p>
                   </div>
                   <div className="flex-1 flex items-center justify-start gap-4">
-                    {lastMatch.awayTeam?.name === ACSED_TEAM_NAME ? (
+                    {isACSED(lastMatch.awayTeam?.name) ? (
                       <img src="/ACSED-transaparent.webp" alt="AC SED" className="h-28 w-auto" />
                     ) : lastMatch.awayTeam?.logoUrl ? (
                       <img
@@ -230,7 +228,7 @@ export default async function HomePage() {
                         className="h-28 w-28 object-contain"
                       />
                     ) : null}
-                    <p className={`text-2xl md:text-3xl font-bold ${lastMatch.awayTeam?.name === ACSED_TEAM_NAME ? 'text-wheat' : 'text-cream'}`}>
+                    <p className={`text-2xl md:text-3xl font-bold ${isACSED(lastMatch.awayTeam?.name) ? 'text-wheat' : 'text-cream'}`}>
                       {lastMatch.awayTeam?.name ?? 'TBD'}
                     </p>
                   </div>
@@ -258,33 +256,164 @@ export default async function HomePage() {
               </div>
             </section>
 
-            {/* Últimos resultados */}
-            {latestMatches.length > 0 && (
+            {/* Partidos de Fase */}
+            {allPhaseMatches.length > 0 && (
               <section className="min-w-0">
-                <h2 className="text-lg md:text-2xl font-bold text-navy mb-4">Últimos Resultados</h2>
-                <div className="space-y-2 md:space-y-3">
-                  {latestMatches.slice(1).map((m) => {
-                    const homeTeamName = m.homeTeam?.name ?? 'TBD'
-                    const awayTeamName = m.awayTeam?.name ?? 'TBD'
-                    const isAcsedHome = homeTeamName.toUpperCase().includes('ACSED')
-                    return (
-                      <div
-                        key={m.id}
-                        className="bg-white rounded-lg md:rounded-xl px-2 md:px-5 py-3 md:py-4 border border-cream-dark/30 flex items-center justify-between gap-2 md:gap-3 hover:shadow-md transition-shadow min-w-0"
-                      >
-                        <span className={`text-xs md:text-sm font-medium truncate flex-1 min-w-0 ${isAcsedHome ? 'text-navy font-bold' : 'text-gray-600'}`}>
-                          {homeTeamName}
-                        </span>
-                        <span className="font-bold text-sm md:text-xl text-navy tabular-nums whitespace-nowrap flex-shrink-0">
-                          {m.homeScore ?? '?'} — {m.awayScore ?? '?'}
-                        </span>
-                        <span className={`text-xs md:text-sm font-medium truncate text-right flex-1 min-w-0 ${!isAcsedHome ? 'text-navy font-bold' : 'text-gray-600'}`}>
-                          {awayTeamName}
-                        </span>
-                      </div>
-                    )
-                  })}
-                </div>
+                <h2 className="text-lg md:text-2xl font-bold text-navy mb-4">Partidos de Fase</h2>
+
+                {/* Próximos Partidos */}
+                {upcomingMatches.length > 0 && (
+                  <div className="mb-6">
+                    <h3 className="text-sm font-semibold text-wheat mb-3">PRÓXIMOS PARTIDOS</h3>
+                    <div className="space-y-2 md:space-y-3">
+                      {upcomingMatches.map((m) => {
+                        const homeTeamName = m.homeTeam?.name ?? 'TBD'
+                        const awayTeamName = m.awayTeam?.name ?? 'TBD'
+                        const isAcsedHome = isACSED(m.homeTeam?.name)
+                        const isAcsedAway = isACSED(m.awayTeam?.name)
+                        const matchDate = new Date(m.date)
+                        const dateStr = matchDate.toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })
+                        const timeStr = matchDate.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })
+
+                        return (
+                          <div
+                            key={m.id}
+                            className="bg-white rounded-lg md:rounded-xl px-3 md:px-5 py-3 md:py-4 border border-cream-dark/30 hover:shadow-md transition-shadow min-w-0"
+                          >
+                            <div className="flex items-center gap-2 md:gap-3">
+                              {/* Home Team */}
+                              <div className="flex items-center gap-2 flex-1 min-w-0">
+                                {isAcsedHome ? (
+                                  <img src="/ACSED-transaparent.webp" alt="AC SED" className="h-10 w-10 md:h-12 md:w-12 object-contain flex-shrink-0" />
+                                ) : m.homeTeam?.logoUrl ? (
+                                  <img
+                                    src={`https://liga-b.nyc3.digitaloceanspaces.com/team/${m.homeTeam.id}/80x80_${m.homeTeam.logoUrl}`}
+                                    alt={homeTeamName}
+                                    className="h-10 w-10 md:h-12 md:w-12 object-contain flex-shrink-0"
+                                  />
+                                ) : null}
+                                <span className={`text-xs md:text-sm font-medium truncate ${isAcsedHome ? 'text-navy font-bold' : 'text-gray-600'}`}>
+                                  {homeTeamName}
+                                </span>
+                              </div>
+
+                              <span className="text-xs md:text-sm text-gray-400 font-medium flex-shrink-0">vs</span>
+
+                              {/* Away Team */}
+                              <div className="flex items-center gap-2 flex-1 min-w-0 justify-end">
+                                <span className={`text-xs md:text-sm font-medium truncate text-right ${isAcsedAway ? 'text-navy font-bold' : 'text-gray-600'}`}>
+                                  {awayTeamName}
+                                </span>
+                                {isAcsedAway ? (
+                                  <img src="/ACSED-transaparent.webp" alt="AC SED" className="h-10 w-10 md:h-12 md:w-12 object-contain flex-shrink-0" />
+                                ) : m.awayTeam?.logoUrl ? (
+                                  <img
+                                    src={`https://liga-b.nyc3.digitaloceanspaces.com/team/${m.awayTeam.id}/80x80_${m.awayTeam.logoUrl}`}
+                                    alt={awayTeamName}
+                                    className="h-10 w-10 md:h-12 md:w-12 object-contain flex-shrink-0"
+                                  />
+                                ) : null}
+                              </div>
+                            </div>
+
+                            {/* Fecha, Hora, Cancha */}
+                            <div className="flex flex-wrap justify-center gap-3 text-xs text-gray-500">
+                              <span className="flex items-center gap-1">
+                                <span>📅</span>
+                                <span>{dateStr}</span>
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <span>🕐</span>
+                                <span>{timeStr}</span>
+                              </span>
+                              {m.venue && (
+                                <span className="flex items-center gap-1">
+                                  <span>🏟️</span>
+                                  <span>{m.venue}</span>
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Partidos Jugados */}
+                {playedMatches.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-500 mb-3">RESULTADOS</h3>
+                    <div className="space-y-2 md:space-y-3">
+                      {playedMatches.reverse().map((m) => {
+                        const homeTeamName = m.homeTeam?.name ?? 'TBD'
+                        const awayTeamName = m.awayTeam?.name ?? 'TBD'
+                        const isAcsedHome = isACSED(m.homeTeam?.name)
+                        const isAcsedAway = isACSED(m.awayTeam?.name)
+                        const matchDate = new Date(m.date)
+                        const dateStr = matchDate.toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })
+
+                        return (
+                          <div
+                            key={m.id}
+                            className="bg-white rounded-lg md:rounded-xl px-3 md:px-5 py-3 md:py-4 border border-cream-dark/30 hover:shadow-md transition-shadow min-w-0"
+                          >
+                            <div className="flex items-center gap-2 md:gap-3">
+                              {/* Home Team */}
+                              <div className="flex items-center gap-2 flex-1 min-w-0">
+                                {isAcsedHome ? (
+                                  <img src="/ACSED-transaparent.webp" alt="AC SED" className="h-10 w-10 md:h-12 md:w-12 object-contain flex-shrink-0" />
+                                ) : m.homeTeam?.logoUrl ? (
+                                  <img
+                                    src={`https://liga-b.nyc3.digitaloceanspaces.com/team/${m.homeTeam.id}/80x80_${m.homeTeam.logoUrl}`}
+                                    alt={homeTeamName}
+                                    className="h-10 w-10 md:h-12 md:w-12 object-contain flex-shrink-0"
+                                  />
+                                ) : null}
+                                <span className={`text-xs md:text-sm font-medium truncate ${isAcsedHome ? 'text-navy font-bold' : 'text-gray-600'}`}>
+                                  {homeTeamName}
+                                </span>
+                              </div>
+
+                              <span className="font-bold text-sm md:text-xl text-navy tabular-nums whitespace-nowrap flex-shrink-0">
+                                {m.homeScore ?? '?'} — {m.awayScore ?? '?'}
+                              </span>
+
+                              {/* Away Team */}
+                              <div className="flex items-center gap-2 flex-1 min-w-0 justify-end">
+                                <span className={`text-xs md:text-sm font-medium truncate text-right ${isAcsedAway ? 'text-navy font-bold' : 'text-gray-600'}`}>
+                                  {awayTeamName}
+                                </span>
+                                {isAcsedAway ? (
+                                  <img src="/ACSED-transaparent.webp" alt="AC SED" className="h-10 w-10 md:h-12 md:w-12 object-contain flex-shrink-0" />
+                                ) : m.awayTeam?.logoUrl ? (
+                                  <img
+                                    src={`https://liga-b.nyc3.digitaloceanspaces.com/team/${m.awayTeam.id}/80x80_${m.awayTeam.logoUrl}`}
+                                    alt={awayTeamName}
+                                    className="h-10 w-10 md:h-12 md:w-12 object-contain flex-shrink-0"
+                                  />
+                                ) : null}
+                              </div>
+                            </div>
+
+                            <div className="flex flex-wrap justify-center gap-3 text-xs text-gray-500">
+                              <span className="flex items-center gap-1">
+                                <span>📅</span>
+                                <span>{dateStr}</span>
+                              </span>
+                              {m.venue && (
+                                <span className="flex items-center gap-1">
+                                  <span>🏟️</span>
+                                  <span>{m.venue}</span>
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
               </section>
             )}
 

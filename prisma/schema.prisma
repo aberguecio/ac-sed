@@ -78,6 +78,7 @@ model Match {
   stageId       Int?
   groupId       Int?
   date          DateTime
+  venue         String?       // Cancha (mapeado desde "grounds" en la API)
   homeTeamId    Int?
   awayTeamId    Int?
   homeScore     Int?
