@@ -1,30 +1,29 @@
-import { prisma } from '@/lib/db'
-import { StandingsTable } from '@/components/standings-table'
-import { NewsCard } from '@/components/news-card'
-import Link from 'next/link'
-import { ACSED_TEAM_NAME, isACSED } from '@/lib/team-utils'
+import { prisma } from "@/lib/db";
+import { StandingsTable } from "@/components/standings-table";
+import { NewsCard } from "@/components/news-card";
+import Link from "next/link";
+import { ACSED_TEAM_NAME, isACSED } from "@/lib/team-utils";
 
-export const revalidate = 300 // revalidate every 5 min
+export const revalidate = 300; // revalidate every 5 min
 
 export default async function HomePage() {
   // Get the most recent tournament and stage
   const latestStanding = await prisma.standing.findFirst({
     where: {
       team: {
-        name: ACSED_TEAM_NAME
-      }
+        name: ACSED_TEAM_NAME,
+      },
     },
     include: {
       tournament: true,
     },
-    orderBy: [
-      { tournamentId: 'desc' },
-      { stageId: 'desc' }
-    ],
-  })
+    orderBy: [{ tournamentId: "desc" }, { stageId: "desc" }],
+  });
 
-  let standings: Awaited<ReturnType<typeof prisma.standing.findMany<{ include: { team: true } }>>> = []
-  let acsedStanding: typeof standings[number] | null = null
+  let standings: Awaited<
+    ReturnType<typeof prisma.standing.findMany<{ include: { team: true } }>>
+  > = [];
+  let acsedStanding: (typeof standings)[number] | null = null;
 
   if (latestStanding) {
     // Get standings for the same tournament/stage/group as AC SED
@@ -37,45 +36,52 @@ export default async function HomePage() {
       include: {
         team: true,
       },
-      orderBy: { position: 'asc' },
-    })
-    acsedStanding = standings.find(s => s.team.name === ACSED_TEAM_NAME) || null
+      orderBy: { position: "asc" },
+    });
+    acsedStanding =
+      standings.find((s) => s.team.name === ACSED_TEAM_NAME) || null;
   }
 
   const [latestNews, allPhaseMatches] = await Promise.all([
     prisma.newsArticle.findMany({
       where: { published: true },
-      orderBy: { generatedAt: 'desc' },
+      orderBy: { generatedAt: "desc" },
       take: 3,
     }),
     prisma.match.findMany({
-      where: latestStanding ? {
-        tournamentId: latestStanding.tournamentId,
-        stageId: latestStanding.stageId,
-        groupId: latestStanding.groupId,
-        OR: [
-          { homeTeam: { name: ACSED_TEAM_NAME } },
-          { awayTeam: { name: ACSED_TEAM_NAME } },
-        ],
-      } : {
-        OR: [
-          { homeTeam: { name: ACSED_TEAM_NAME } },
-          { awayTeam: { name: ACSED_TEAM_NAME } },
-        ],
-      },
+      where: latestStanding
+        ? {
+            tournamentId: latestStanding.tournamentId,
+            stageId: latestStanding.stageId,
+            groupId: latestStanding.groupId,
+            OR: [
+              { homeTeam: { name: ACSED_TEAM_NAME } },
+              { awayTeam: { name: ACSED_TEAM_NAME } },
+            ],
+          }
+        : {
+            OR: [
+              { homeTeam: { name: ACSED_TEAM_NAME } },
+              { awayTeam: { name: ACSED_TEAM_NAME } },
+            ],
+          },
       include: {
         homeTeam: true,
         awayTeam: true,
       },
-      orderBy: { date: 'asc' },
+      orderBy: { date: "asc" },
     }),
-  ])
+  ]);
 
   // Separar partidos jugados y por jugar
-  const playedMatches = allPhaseMatches.filter(m => m.homeScore !== null && m.awayScore !== null)
-  const upcomingMatches = allPhaseMatches.filter(m => m.homeScore === null || m.awayScore === null)
+  const playedMatches = allPhaseMatches.filter(
+    (m) => m.homeScore !== null && m.awayScore !== null
+  );
+  const upcomingMatches = allPhaseMatches.filter(
+    (m) => m.homeScore === null || m.awayScore === null
+  );
 
-  const lastMatch = playedMatches[playedMatches.length - 1]
+  const lastMatch = playedMatches[playedMatches.length - 1];
 
   return (
     <>
@@ -84,10 +90,10 @@ export default async function HomePage() {
         {/* Background Image with Overlay */}
         <div className="absolute inset-0 z-0">
           <img
-            src="/team-1.jpg"
+            src="/team-1.webp"
             alt="AC SED Team"
             className="w-full h-full object-cover opacity-60"
-            style={{ objectPosition: '70% 35%' }}
+            style={{ objectPosition: "70% 35%" }}
           />
           <div className="absolute inset-0 bg-gradient-to-r from-navy via-navy/30 to-navy/10"></div>
         </div>
@@ -96,16 +102,22 @@ export default async function HomePage() {
           <div className="flex flex-col md:flex-row items-center gap-12">
             <div className="flex-1">
               <div className="flex items-center gap-6 mb-6">
-                <img src="/ACSED-transaparent.webp" alt="AC SED Logo" className="h-32 w-auto" />
+                <img
+                  src="/ACSED-transaparent.webp"
+                  alt="AC SED Logo"
+                  className="h-32 w-auto"
+                />
                 <div>
                   <h1 className="text-5xl md:text-6xl font-extrabold leading-tight">
-                    Athletic Club<br />
+                    Athletic Club
+                    <br />
                     <span className="text-wheat">SED</span>
                   </h1>
                 </div>
               </div>
               <p className="text-cream/80 text-xl mb-8">
-                {latestStanding?.tournament?.name || `Temporada ${new Date().getFullYear()}`}
+                {latestStanding?.tournament?.name ||
+                  `Temporada ${new Date().getFullYear()}`}
               </p>
               <div className="flex gap-4">
                 <Link
@@ -127,13 +139,34 @@ export default async function HomePage() {
             {acsedStanding && (
               <div className="grid grid-cols-3 gap-2 md:gap-4">
                 {[
-                  { label: 'Posición', value: `#${acsedStanding.position}`, color: 'text-wheat' },
-                  { label: 'Puntos', value: acsedStanding.points, color: 'text-green-400' },
-                  { label: 'Partidos', value: acsedStanding.played, color: 'text-blue-400' },
+                  {
+                    label: "Posición",
+                    value: `#${acsedStanding.position}`,
+                    color: "text-wheat",
+                  },
+                  {
+                    label: "Puntos",
+                    value: acsedStanding.points,
+                    color: "text-green-400",
+                  },
+                  {
+                    label: "Partidos",
+                    value: acsedStanding.played,
+                    color: "text-blue-400",
+                  },
                 ].map(({ label, value, color }) => (
-                  <div key={label} className="bg-white/10 backdrop-blur-md rounded-xl md:rounded-2xl p-3 md:p-6 text-center border border-white/20 hover:bg-white/20 transition-all transform hover:scale-105">
-                    <p className={`${color} text-2xl md:text-4xl font-extrabold mb-1`}>{value}</p>
-                    <p className="text-cream/70 text-xs md:text-sm font-medium">{label}</p>
+                  <div
+                    key={label}
+                    className="bg-white/10 backdrop-blur-md rounded-xl md:rounded-2xl p-3 md:p-6 text-center border border-white/20 hover:bg-white/20 transition-all transform hover:scale-105"
+                  >
+                    <p
+                      className={`${color} text-2xl md:text-4xl font-extrabold mb-1`}
+                    >
+                      {value}
+                    </p>
+                    <p className="text-cream/70 text-xs md:text-sm font-medium">
+                      {label}
+                    </p>
                   </div>
                 ))}
               </div>
@@ -143,14 +176,20 @@ export default async function HomePage() {
           {/* Last Match Highlight - Inside same section */}
           {lastMatch && (
             <div className="max-w-6xl mx-auto relative z-10 mt-16">
-              <h2 className="text-sm uppercase tracking-wider text-wheat mb-4 text-center">Último Partido</h2>
+              <h2 className="text-sm uppercase tracking-wider text-wheat mb-4 text-center">
+                Último Partido
+              </h2>
               <div className="bg-white/10 backdrop-blur-md rounded-3xl p-4 md:p-8 border border-white/20">
                 {/* Mobile Layout */}
                 <div className="flex md:hidden flex-col gap-6">
                   {/* Home Team */}
                   <div className="flex items-center justify-center gap-3">
                     {isACSED(lastMatch.homeTeam?.name) ? (
-                      <img src="/ACSED-transaparent.webp" alt="AC SED" className="h-16 w-auto" />
+                      <img
+                        src="/ACSED-transaparent.webp"
+                        alt="AC SED"
+                        className="h-16 w-auto"
+                      />
                     ) : lastMatch.homeTeam?.logoUrl ? (
                       <img
                         src={`https://liga-b.nyc3.digitaloceanspaces.com/team/${lastMatch.homeTeam.id}/${lastMatch.homeTeam.logoUrl}`}
@@ -158,8 +197,14 @@ export default async function HomePage() {
                         className="h-16 w-16 object-contain"
                       />
                     ) : null}
-                    <p className={`text-xl font-bold text-center ${isACSED(lastMatch.homeTeam?.name) ? 'text-wheat' : 'text-cream'}`}>
-                      {lastMatch.homeTeam?.name ?? 'TBD'}
+                    <p
+                      className={`text-xl font-bold text-center ${
+                        isACSED(lastMatch.homeTeam?.name)
+                          ? "text-wheat"
+                          : "text-cream"
+                      }`}
+                    >
+                      {lastMatch.homeTeam?.name ?? "TBD"}
                     </p>
                   </div>
 
@@ -167,18 +212,26 @@ export default async function HomePage() {
                   <div className="text-center">
                     <div className="bg-wheat rounded-2xl px-6 py-4 inline-block">
                       <p className="text-4xl font-extrabold text-navy tabular-nums">
-                        {lastMatch.homeScore ?? '?'} - {lastMatch.awayScore ?? '?'}
+                        {lastMatch.homeScore ?? "?"} -{" "}
+                        {lastMatch.awayScore ?? "?"}
                       </p>
                     </div>
                     <p className="text-cream/60 text-xs mt-2">
-                      {new Date(lastMatch.date).toLocaleDateString('es-CL', { day: 'numeric', month: 'long' })}
+                      {new Date(lastMatch.date).toLocaleDateString("es-CL", {
+                        day: "numeric",
+                        month: "long",
+                      })}
                     </p>
                   </div>
 
                   {/* Away Team */}
                   <div className="flex items-center justify-center gap-3">
                     {isACSED(lastMatch.awayTeam?.name) ? (
-                      <img src="/ACSED-transaparent.webp" alt="AC SED" className="h-16 w-auto" />
+                      <img
+                        src="/ACSED-transaparent.webp"
+                        alt="AC SED"
+                        className="h-16 w-auto"
+                      />
                     ) : lastMatch.awayTeam?.logoUrl ? (
                       <img
                         src={`https://liga-b.nyc3.digitaloceanspaces.com/team/${lastMatch.awayTeam.id}/${lastMatch.awayTeam.logoUrl}`}
@@ -186,8 +239,14 @@ export default async function HomePage() {
                         className="h-16 w-16 object-contain"
                       />
                     ) : null}
-                    <p className={`text-xl font-bold text-center ${isACSED(lastMatch.awayTeam?.name) ? 'text-wheat' : 'text-cream'}`}>
-                      {lastMatch.awayTeam?.name ?? 'TBD'}
+                    <p
+                      className={`text-xl font-bold text-center ${
+                        isACSED(lastMatch.awayTeam?.name)
+                          ? "text-wheat"
+                          : "text-cream"
+                      }`}
+                    >
+                      {lastMatch.awayTeam?.name ?? "TBD"}
                     </p>
                   </div>
                 </div>
@@ -195,11 +254,21 @@ export default async function HomePage() {
                 {/* Desktop Layout */}
                 <div className="hidden md:flex items-start justify-between gap-8 -mt-2">
                   <div className="flex-1 flex items-center justify-end gap-4">
-                    <p className={`text-2xl md:text-3xl font-bold ${isACSED(lastMatch.homeTeam?.name) ? 'text-wheat' : 'text-cream'}`}>
-                      {lastMatch.homeTeam?.name ?? 'TBD'}
+                    <p
+                      className={`text-2xl md:text-3xl font-bold ${
+                        isACSED(lastMatch.homeTeam?.name)
+                          ? "text-wheat"
+                          : "text-cream"
+                      }`}
+                    >
+                      {lastMatch.homeTeam?.name ?? "TBD"}
                     </p>
                     {isACSED(lastMatch.homeTeam?.name) ? (
-                      <img src="/ACSED-transaparent.webp" alt="AC SED" className="h-28 w-auto" />
+                      <img
+                        src="/ACSED-transaparent.webp"
+                        alt="AC SED"
+                        className="h-28 w-auto"
+                      />
                     ) : lastMatch.homeTeam?.logoUrl ? (
                       <img
                         src={`https://liga-b.nyc3.digitaloceanspaces.com/team/${lastMatch.homeTeam.id}/${lastMatch.homeTeam.logoUrl}`}
@@ -211,16 +280,24 @@ export default async function HomePage() {
                   <div className="text-center px-8 pt-2">
                     <div className="bg-wheat rounded-2xl px-8 py-6 min-w-[160px]">
                       <p className="text-5xl font-extrabold text-navy tabular-nums">
-                        {lastMatch.homeScore ?? '?'} - {lastMatch.awayScore ?? '?'}
+                        {lastMatch.homeScore ?? "?"} -{" "}
+                        {lastMatch.awayScore ?? "?"}
                       </p>
                     </div>
                     <p className="text-cream/60 text-sm mt-3">
-                      {new Date(lastMatch.date).toLocaleDateString('es-CL', { day: 'numeric', month: 'long' })}
+                      {new Date(lastMatch.date).toLocaleDateString("es-CL", {
+                        day: "numeric",
+                        month: "long",
+                      })}
                     </p>
                   </div>
                   <div className="flex-1 flex items-center justify-start gap-4">
                     {isACSED(lastMatch.awayTeam?.name) ? (
-                      <img src="/ACSED-transaparent.webp" alt="AC SED" className="h-28 w-auto" />
+                      <img
+                        src="/ACSED-transaparent.webp"
+                        alt="AC SED"
+                        className="h-28 w-auto"
+                      />
                     ) : lastMatch.awayTeam?.logoUrl ? (
                       <img
                         src={`https://liga-b.nyc3.digitaloceanspaces.com/team/${lastMatch.awayTeam.id}/${lastMatch.awayTeam.logoUrl}`}
@@ -228,8 +305,14 @@ export default async function HomePage() {
                         className="h-28 w-28 object-contain"
                       />
                     ) : null}
-                    <p className={`text-2xl md:text-3xl font-bold ${isACSED(lastMatch.awayTeam?.name) ? 'text-wheat' : 'text-cream'}`}>
-                      {lastMatch.awayTeam?.name ?? 'TBD'}
+                    <p
+                      className={`text-2xl md:text-3xl font-bold ${
+                        isACSED(lastMatch.awayTeam?.name)
+                          ? "text-wheat"
+                          : "text-cream"
+                      }`}
+                    >
+                      {lastMatch.awayTeam?.name ?? "TBD"}
                     </p>
                   </div>
                 </div>
@@ -246,8 +329,15 @@ export default async function HomePage() {
             {/* Tabla de posiciones */}
             <section className="min-w-0">
               <div className="flex items-center justify-between mb-4 gap-2">
-                <h2 className="text-lg md:text-2xl font-bold text-navy">Tabla de Posiciones</h2>
-                <Link href="/stats" className="text-xs md:text-sm text-wheat hover:underline font-medium whitespace-nowrap flex-shrink-0">Ver estadísticas →</Link>
+                <h2 className="text-lg md:text-2xl font-bold text-navy">
+                  Tabla de Posiciones
+                </h2>
+                <Link
+                  href="/stats"
+                  className="text-xs md:text-sm text-wheat hover:underline font-medium whitespace-nowrap flex-shrink-0"
+                >
+                  Ver estadísticas →
+                </Link>
               </div>
               <div className="bg-white rounded-lg md:rounded-2xl shadow-lg border border-cream-dark/30 overflow-hidden">
                 <div className="overflow-x-auto">
@@ -259,21 +349,31 @@ export default async function HomePage() {
             {/* Partidos de Fase */}
             {allPhaseMatches.length > 0 && (
               <section className="min-w-0">
-                <h2 className="text-lg md:text-2xl font-bold text-navy mb-4">Partidos de Fase</h2>
+                <h2 className="text-lg md:text-2xl font-bold text-navy mb-4">
+                  Partidos de Fase
+                </h2>
 
                 {/* Próximos Partidos */}
                 {upcomingMatches.length > 0 && (
                   <div className="mb-6">
-                    <h3 className="text-sm font-semibold text-wheat mb-3">PRÓXIMOS PARTIDOS</h3>
+                    <h3 className="text-sm font-semibold text-wheat mb-3">
+                      PRÓXIMOS PARTIDOS
+                    </h3>
                     <div className="space-y-2 md:space-y-3">
                       {upcomingMatches.map((m) => {
-                        const homeTeamName = m.homeTeam?.name ?? 'TBD'
-                        const awayTeamName = m.awayTeam?.name ?? 'TBD'
-                        const isAcsedHome = isACSED(m.homeTeam?.name)
-                        const isAcsedAway = isACSED(m.awayTeam?.name)
-                        const matchDate = new Date(m.date)
-                        const dateStr = matchDate.toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })
-                        const timeStr = matchDate.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })
+                        const homeTeamName = m.homeTeam?.name ?? "TBD";
+                        const awayTeamName = m.awayTeam?.name ?? "TBD";
+                        const isAcsedHome = isACSED(m.homeTeam?.name);
+                        const isAcsedAway = isACSED(m.awayTeam?.name);
+                        const matchDate = new Date(m.date);
+                        const dateStr = matchDate.toLocaleDateString("es-CL", {
+                          day: "numeric",
+                          month: "short",
+                        });
+                        const timeStr = matchDate.toLocaleTimeString("es-CL", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        });
 
                         return (
                           <div
@@ -284,7 +384,11 @@ export default async function HomePage() {
                               {/* Home Team */}
                               <div className="flex items-center gap-2 flex-1 min-w-0">
                                 {isAcsedHome ? (
-                                  <img src="/ACSED-transaparent.webp" alt="AC SED" className="h-10 w-10 md:h-12 md:w-12 object-contain flex-shrink-0" />
+                                  <img
+                                    src="/ACSED-transaparent.webp"
+                                    alt="AC SED"
+                                    className="h-10 w-10 md:h-12 md:w-12 object-contain flex-shrink-0"
+                                  />
                                 ) : m.homeTeam?.logoUrl ? (
                                   <img
                                     src={`https://liga-b.nyc3.digitaloceanspaces.com/team/${m.homeTeam.id}/80x80_${m.homeTeam.logoUrl}`}
@@ -292,20 +396,38 @@ export default async function HomePage() {
                                     className="h-10 w-10 md:h-12 md:w-12 object-contain flex-shrink-0"
                                   />
                                 ) : null}
-                                <span className={`text-xs md:text-sm font-medium truncate ${isAcsedHome ? 'text-navy font-bold' : 'text-gray-600'}`}>
+                                <span
+                                  className={`text-xs md:text-sm font-medium truncate ${
+                                    isAcsedHome
+                                      ? "text-navy font-bold"
+                                      : "text-gray-600"
+                                  }`}
+                                >
                                   {homeTeamName}
                                 </span>
                               </div>
 
-                              <span className="text-xs md:text-sm text-gray-400 font-medium flex-shrink-0">vs</span>
+                              <span className="text-xs md:text-sm text-gray-400 font-medium flex-shrink-0">
+                                vs
+                              </span>
 
                               {/* Away Team */}
                               <div className="flex items-center gap-2 flex-1 min-w-0 justify-end">
-                                <span className={`text-xs md:text-sm font-medium truncate text-right ${isAcsedAway ? 'text-navy font-bold' : 'text-gray-600'}`}>
+                                <span
+                                  className={`text-xs md:text-sm font-medium truncate text-right ${
+                                    isAcsedAway
+                                      ? "text-navy font-bold"
+                                      : "text-gray-600"
+                                  }`}
+                                >
                                   {awayTeamName}
                                 </span>
                                 {isAcsedAway ? (
-                                  <img src="/ACSED-transaparent.webp" alt="AC SED" className="h-10 w-10 md:h-12 md:w-12 object-contain flex-shrink-0" />
+                                  <img
+                                    src="/ACSED-transaparent.webp"
+                                    alt="AC SED"
+                                    className="h-10 w-10 md:h-12 md:w-12 object-contain flex-shrink-0"
+                                  />
                                 ) : m.awayTeam?.logoUrl ? (
                                   <img
                                     src={`https://liga-b.nyc3.digitaloceanspaces.com/team/${m.awayTeam.id}/80x80_${m.awayTeam.logoUrl}`}
@@ -334,7 +456,7 @@ export default async function HomePage() {
                               )}
                             </div>
                           </div>
-                        )
+                        );
                       })}
                     </div>
                   </div>
@@ -343,15 +465,20 @@ export default async function HomePage() {
                 {/* Partidos Jugados */}
                 {playedMatches.length > 0 && (
                   <div>
-                    <h3 className="text-sm font-semibold text-gray-500 mb-3">RESULTADOS</h3>
+                    <h3 className="text-sm font-semibold text-gray-500 mb-3">
+                      RESULTADOS
+                    </h3>
                     <div className="space-y-2 md:space-y-3">
                       {playedMatches.reverse().map((m) => {
-                        const homeTeamName = m.homeTeam?.name ?? 'TBD'
-                        const awayTeamName = m.awayTeam?.name ?? 'TBD'
-                        const isAcsedHome = isACSED(m.homeTeam?.name)
-                        const isAcsedAway = isACSED(m.awayTeam?.name)
-                        const matchDate = new Date(m.date)
-                        const dateStr = matchDate.toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })
+                        const homeTeamName = m.homeTeam?.name ?? "TBD";
+                        const awayTeamName = m.awayTeam?.name ?? "TBD";
+                        const isAcsedHome = isACSED(m.homeTeam?.name);
+                        const isAcsedAway = isACSED(m.awayTeam?.name);
+                        const matchDate = new Date(m.date);
+                        const dateStr = matchDate.toLocaleDateString("es-CL", {
+                          day: "numeric",
+                          month: "short",
+                        });
 
                         return (
                           <div
@@ -362,7 +489,11 @@ export default async function HomePage() {
                               {/* Home Team */}
                               <div className="flex items-center gap-2 flex-1 min-w-0">
                                 {isAcsedHome ? (
-                                  <img src="/ACSED-transaparent.webp" alt="AC SED" className="h-10 w-10 md:h-12 md:w-12 object-contain flex-shrink-0" />
+                                  <img
+                                    src="/ACSED-transaparent.webp"
+                                    alt="AC SED"
+                                    className="h-10 w-10 md:h-12 md:w-12 object-contain flex-shrink-0"
+                                  />
                                 ) : m.homeTeam?.logoUrl ? (
                                   <img
                                     src={`https://liga-b.nyc3.digitaloceanspaces.com/team/${m.homeTeam.id}/80x80_${m.homeTeam.logoUrl}`}
@@ -370,22 +501,38 @@ export default async function HomePage() {
                                     className="h-10 w-10 md:h-12 md:w-12 object-contain flex-shrink-0"
                                   />
                                 ) : null}
-                                <span className={`text-xs md:text-sm font-medium truncate ${isAcsedHome ? 'text-navy font-bold' : 'text-gray-600'}`}>
+                                <span
+                                  className={`text-xs md:text-sm font-medium truncate ${
+                                    isAcsedHome
+                                      ? "text-navy font-bold"
+                                      : "text-gray-600"
+                                  }`}
+                                >
                                   {homeTeamName}
                                 </span>
                               </div>
 
                               <span className="font-bold text-sm md:text-xl text-navy tabular-nums whitespace-nowrap flex-shrink-0">
-                                {m.homeScore ?? '?'} — {m.awayScore ?? '?'}
+                                {m.homeScore ?? "?"} — {m.awayScore ?? "?"}
                               </span>
 
                               {/* Away Team */}
                               <div className="flex items-center gap-2 flex-1 min-w-0 justify-end">
-                                <span className={`text-xs md:text-sm font-medium truncate text-right ${isAcsedAway ? 'text-navy font-bold' : 'text-gray-600'}`}>
+                                <span
+                                  className={`text-xs md:text-sm font-medium truncate text-right ${
+                                    isAcsedAway
+                                      ? "text-navy font-bold"
+                                      : "text-gray-600"
+                                  }`}
+                                >
                                   {awayTeamName}
                                 </span>
                                 {isAcsedAway ? (
-                                  <img src="/ACSED-transaparent.webp" alt="AC SED" className="h-10 w-10 md:h-12 md:w-12 object-contain flex-shrink-0" />
+                                  <img
+                                    src="/ACSED-transaparent.webp"
+                                    alt="AC SED"
+                                    className="h-10 w-10 md:h-12 md:w-12 object-contain flex-shrink-0"
+                                  />
                                 ) : m.awayTeam?.logoUrl ? (
                                   <img
                                     src={`https://liga-b.nyc3.digitaloceanspaces.com/team/${m.awayTeam.id}/80x80_${m.awayTeam.logoUrl}`}
@@ -409,7 +556,7 @@ export default async function HomePage() {
                               )}
                             </div>
                           </div>
-                        )
+                        );
                       })}
                     </div>
                   </div>
@@ -420,23 +567,29 @@ export default async function HomePage() {
             {/* Team Gallery */}
             <section className="min-w-0">
               <div className="mb-4">
-                <h2 className="text-lg md:text-2xl font-bold text-navy">Nuestro Equipo</h2>
-                <p className="text-sm text-gray-600">Momentos destacados de la temporada</p>
+                <h2 className="text-lg md:text-2xl font-bold text-navy">
+                  Nuestro Equipo
+                </h2>
+                <p className="text-sm text-gray-600">
+                  Momentos destacados de la temporada
+                </p>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-                {['team-1.jpg', 'team-2.jpg', 'team-3.jpg', 'team-4.jpg'].map((img, idx) => (
-                  <div
-                    key={idx}
-                    className="relative aspect-square rounded-xl md:rounded-2xl overflow-hidden group cursor-pointer shadow-lg hover:shadow-2xl transition-all duration-300"
-                  >
-                    <img
-                      src={`/${img}`}
-                      alt={`AC SED Team ${idx + 1}`}
-                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                    />
-                    <div className="absolute inset-0 bg-navy/0 group-hover:bg-navy/20 transition-colors duration-300"></div>
-                  </div>
-                ))}
+                {["team-1.webp", "team-2.webp", "team-3.webp", "team-4.webp"].map(
+                  (img, idx) => (
+                    <div
+                      key={idx}
+                      className="relative aspect-square rounded-xl md:rounded-2xl overflow-hidden group cursor-pointer shadow-lg hover:shadow-2xl transition-all duration-300"
+                    >
+                      <img
+                        src={`/${img}`}
+                        alt={`AC SED Team ${idx + 1}`}
+                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                      />
+                      <div className="absolute inset-0 bg-navy/0 group-hover:bg-navy/20 transition-colors duration-300"></div>
+                    </div>
+                  )
+                )}
               </div>
             </section>
           </div>
@@ -444,11 +597,20 @@ export default async function HomePage() {
           {/* Right: latest news */}
           <div className="min-w-0">
             <div className="flex items-center justify-between mb-4 gap-2">
-              <h2 className="text-lg md:text-2xl font-bold text-navy">Noticias</h2>
-              <Link href="/news" className="text-xs md:text-sm text-wheat hover:underline font-medium whitespace-nowrap flex-shrink-0">Ver todas →</Link>
+              <h2 className="text-lg md:text-2xl font-bold text-navy">
+                Noticias
+              </h2>
+              <Link
+                href="/news"
+                className="text-xs md:text-sm text-wheat hover:underline font-medium whitespace-nowrap flex-shrink-0"
+              >
+                Ver todas →
+              </Link>
             </div>
             {latestNews.length === 0 ? (
-              <p className="text-gray-400 text-sm">Sin noticias publicadas aún.</p>
+              <p className="text-gray-400 text-sm">
+                Sin noticias publicadas aún.
+              </p>
             ) : (
               <div className="space-y-3 md:space-y-4">
                 {latestNews.map((article) => (
@@ -459,7 +621,6 @@ export default async function HomePage() {
           </div>
         </div>
       </div>
-
     </>
-  )
+  );
 }
