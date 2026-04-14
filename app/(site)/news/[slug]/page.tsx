@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import type { Metadata } from 'next'
+import { StandingsTable } from '@/components/standings-table'
 
 interface Props {
   params: Promise<{ slug: string }>
@@ -29,6 +30,16 @@ export default async function NewsDetailPage({ params }: Props) {
   })
 
   if (!article) notFound()
+
+  const tournamentId = article.match?.tournamentId ?? 201
+  const stageId = article.match?.stageId ?? 396
+  const groupId = article.match?.groupId ?? 2300
+
+  const standings = await prisma.standing.findMany({
+    where: { tournamentId, stageId, groupId },
+    include: { team: true },
+    orderBy: { position: 'asc' },
+  })
 
   const date = new Date(article.generatedAt).toLocaleDateString('es-CL', {
     weekday: 'long',
@@ -70,6 +81,13 @@ export default async function NewsDetailPage({ params }: Props) {
             paragraph.trim() ? <p key={i}>{paragraph}</p> : null
           )}
         </div>
+
+        {standings.length > 0 && (
+          <div className="mt-10">
+            <h2 className="text-lg font-bold text-navy mb-3">Tabla de posiciones</h2>
+            <StandingsTable standings={standings} />
+          </div>
+        )}
       </article>
     </div>
   )

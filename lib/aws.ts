@@ -6,16 +6,66 @@ const region = process.env.AWS_REGION ?? 'us-east-1'
 export const sesClient = new SESClient({ region })
 export const s3Client = new S3Client({ region })
 
+interface StandingRow {
+  position: number
+  teamName: string
+  played: number
+  won: number
+  drawn: number
+  lost: number
+  points: number
+  isACSED: boolean
+}
+
 interface Article {
   title: string
   slug: string
   content: string
   imageUrl?: string | null
+  standings?: StandingRow[]
 }
 
 interface Subscriber {
   email: string
   unsubscribeToken: string
+}
+
+function buildStandingsHtml(standings: StandingRow[]): string {
+  const rows = standings.map((s) => {
+    const rowBg = s.isACSED ? 'background-color:#F5EDD8;font-weight:bold;' : ''
+    const teamCell = s.isACSED
+      ? `<td style="padding:7px 10px;${rowBg}color:#1B2B4B;font-weight:bold;">${s.teamName}</td>`
+      : `<td style="padding:7px 10px;">${s.teamName}</td>`
+    return `<tr style="${rowBg}">
+      <td style="padding:7px 10px;text-align:center;color:#666;">${s.position}</td>
+      ${teamCell}
+      <td style="padding:7px 10px;text-align:center;">${s.played}</td>
+      <td style="padding:7px 10px;text-align:center;">${s.won}</td>
+      <td style="padding:7px 10px;text-align:center;">${s.drawn}</td>
+      <td style="padding:7px 10px;text-align:center;">${s.lost}</td>
+      <td style="padding:7px 10px;text-align:center;font-weight:bold;color:#1B2B4B;">${s.points}</td>
+    </tr>`
+  }).join('')
+
+  return `<div style="margin-top:32px;">
+  <p style="color:#1B2B4B;font-size:14px;font-weight:bold;margin:0 0 10px 0;text-transform:uppercase;letter-spacing:0.5px;">Tabla de posiciones</p>
+  <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:13px;color:#333;">
+    <thead>
+      <tr style="background-color:#1B2B4B;color:#FAF7F0;">
+        <th style="padding:8px 10px;text-align:center;font-weight:600;">#</th>
+        <th style="padding:8px 10px;text-align:left;font-weight:600;">Equipo</th>
+        <th style="padding:8px 10px;text-align:center;font-weight:600;">PJ</th>
+        <th style="padding:8px 10px;text-align:center;font-weight:600;">PG</th>
+        <th style="padding:8px 10px;text-align:center;font-weight:600;">PE</th>
+        <th style="padding:8px 10px;text-align:center;font-weight:600;">PP</th>
+        <th style="padding:8px 10px;text-align:center;font-weight:600;">Pts</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rows}
+    </tbody>
+  </table>
+</div>`
 }
 
 function buildEmailHtml(article: Article, subscriber: Subscriber, siteUrl: string): string {
@@ -25,6 +75,10 @@ function buildEmailHtml(article: Article, subscriber: Subscriber, siteUrl: strin
 
   const imageBlock = article.imageUrl
     ? `<img src="${article.imageUrl}" alt="${article.title}" style="width:100%;max-width:600px;border-radius:8px;margin-bottom:24px;display:block;" />`
+    : ''
+
+  const standingsBlock = article.standings && article.standings.length > 0
+    ? buildStandingsHtml(article.standings)
     : ''
 
   return `<!DOCTYPE html>
@@ -72,6 +126,7 @@ function buildEmailHtml(article: Article, subscriber: Subscriber, siteUrl: strin
               <a href="${articleUrl}" style="display:inline-block;background-color:#1B2B4B;color:#FAF7F0;text-decoration:none;font-weight:bold;font-size:14px;padding:12px 28px;border-radius:8px;">
                 Leer nota completa →
               </a>
+              ${standingsBlock}
             </td>
           </tr>
           <!-- Footer -->
@@ -92,6 +147,8 @@ function buildEmailHtml(article: Article, subscriber: Subscriber, siteUrl: strin
 </body>
 </html>`
 }
+
+export type { StandingRow }
 
 export async function sendNewsletterEmail(
   article: Article,
