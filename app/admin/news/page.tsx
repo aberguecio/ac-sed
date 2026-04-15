@@ -556,6 +556,21 @@ export default function AdminNewsPage() {
                           </div>
                         </details>
                       )}
+
+                      {editingArticle.aiContext.historicalMatchesCount > 0 && (
+                        <details className="border-t pt-2">
+                          <summary className="font-medium cursor-pointer">
+                            Historial vs rival (fuera de fase actual) ({editingArticle.aiContext.historicalMatchesCount})
+                          </summary>
+                          <div className="mt-1 pl-3 space-y-0.5">
+                            {editingArticle.aiContext.historicalMatches.map((m, i) => (
+                              <div key={i} className="text-gray-500">
+                                {m.date}: {m.match}
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
                     </div>
                   </div>
                 )}

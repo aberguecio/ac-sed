@@ -78,6 +78,13 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       otherResults: context.otherMatchesInRound.map((m: any) =>
         `${m.homeTeam?.name ?? 'TBD'} ${m.homeScore}-${m.awayScore} ${m.awayTeam?.name ?? 'TBD'}`
       ),
+
+      // Historical matches (outside current phase)
+      historicalMatchesCount: context.historicalMatches.length,
+      historicalMatches: context.historicalMatches.map((m: any) => ({
+        date: m.date.toLocaleDateString('es-CL', { year: 'numeric', month: 'short' }),
+        match: `${m.homeTeam?.name ?? 'TBD'} ${m.homeScore}-${m.awayScore} ${m.awayTeam?.name ?? 'TBD'}`,
+      })),
     }
   }
 

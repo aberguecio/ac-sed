@@ -28,6 +28,16 @@ interface TeamStats {
   groupName: string
 }
 
+interface HeadToHeadRecord {
+  opponent: string
+  played: number
+  won: number
+  drawn: number
+  lost: number
+  goalsFor: number
+  goalsAgainst: number
+}
+
 export default function StatsPage() {
   const [tournaments, setTournaments] = useState<Tournament[]>([])
   const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(null)
@@ -36,9 +46,10 @@ export default function StatsPage() {
   const [loading, setLoading] = useState(false)
   const [loadingMatchDayChange, setLoadingMatchDayChange] = useState(false)
   const [loadingTournaments, setLoadingTournaments] = useState(true)
-  const [generatingAnalysis, setGeneratingAnalysis] = useState(false)
   const [matchDays, setMatchDays] = useState<MatchDay[]>([])
   const [selectedMatchDay, setSelectedMatchDay] = useState<number | null>(null)
+  const [headToHead, setHeadToHead] = useState<HeadToHeadRecord[]>([])
+  const [loadingHeadToHead, setLoadingHeadToHead] = useState(false)
 
   async function fetchTournaments() {
     setLoadingTournaments(true)
@@ -113,11 +124,6 @@ export default function StatsPage() {
       const res = await fetch(url)
       const data = await res.json()
       setStats(data)
-
-      // Si no hay análisis, generarlo en background (only for latest data)
-      if (!data.analysis && data.dataHash && selectedMatchDay === matchDays[matchDays.length - 1]?.matchDay) {
-        generateAnalysis(data)
-      }
     } catch (err) {
       console.error('Error fetching stats:', err)
     }
@@ -129,39 +135,21 @@ export default function StatsPage() {
     }
   }
 
-  async function generateAnalysis(statsData: any) {
-    setGeneratingAnalysis(true)
+  async function fetchHeadToHead() {
+    setLoadingHeadToHead(true)
     try {
-      const res = await fetch('/api/stats/generate-analysis', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tournamentId: statsData.tournamentId,
-          stageId: statsData.stageId,
-          groupId: statsData.groupId,
-          dataHash: statsData.dataHash,
-          standingsData: statsData.standings,
-          fixtures: statsData.fixtures,
-          teamScorers: statsData.teamScorers,
-          matchesPlayed: statsData.matchesPlayed,
-          matchesRemaining: statsData.matchesRemaining,
-        }),
-      })
-
-      const result = await res.json()
-      if (result.analysis) {
-        // Actualizar el análisis en el estado
-        setStats(prev => prev ? { ...prev, analysis: result.analysis } : null)
-      }
+      const res = await fetch('/api/stats/head-to-head')
+      const data = await res.json()
+      setHeadToHead(data)
     } catch (err) {
-      console.error('Error generating analysis:', err)
-    } finally {
-      setGeneratingAnalysis(false)
+      console.error('Error fetching head to head:', err)
     }
+    setLoadingHeadToHead(false)
   }
 
   useEffect(() => {
     fetchTournaments()
+    fetchHeadToHead()
   }, [])
 
   useEffect(() => {
@@ -397,42 +385,51 @@ export default function StatsPage() {
             </div>
           </div>
 
-          {/* AI Analysis - Coach Commentary */}
-          {(stats.analysis || generatingAnalysis) && (
-            <div className="bg-gradient-to-r from-navy to-navy-light text-cream rounded-xl p-6 shadow-lg mb-8">
-              <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                🎯 Análisis del Coach
-              </h2>
-              {generatingAnalysis ? (
-                <div className="flex items-center gap-3">
-                  <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-cream"></div>
-                  <p className="text-cream/80">Generando análisis del coach...</p>
-                </div>
+          {/* Historical Stats Divider */}
+          <div className="my-8 border-t border-gray-300"></div>
+
+          {/* Historical Head-to-Head */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <h2 className="text-lg font-bold text-navy px-4 py-3 bg-gray-50">
+              Historial vs Equipos
+            </h2>
+            <div className="p-4">
+              {loadingHeadToHead ? (
+                <p className="text-gray-400 text-center py-8">Cargando historial...</p>
+              ) : headToHead.length === 0 ? (
+                <p className="text-gray-400 text-center py-8">No hay historial disponible</p>
               ) : (
-                <div className="prose prose-invert max-w-none">
-                  <p className="whitespace-pre-wrap">{stats.analysis}</p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-200">
+                        <th className="text-left py-2 px-2 font-semibold text-gray-700">Equipo</th>
+                        <th className="text-center py-2 px-2 font-semibold text-gray-700">PJ</th>
+                        <th className="text-center py-2 px-2 font-semibold text-green-600">G</th>
+                        <th className="text-center py-2 px-2 font-semibold text-gray-600">E</th>
+                        <th className="text-center py-2 px-2 font-semibold text-red-600">P</th>
+                        <th className="text-center py-2 px-2 font-semibold text-gray-700">GF</th>
+                        <th className="text-center py-2 px-2 font-semibold text-gray-700">GC</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {headToHead.map((record, idx) => (
+                        <tr key={idx} className="border-b last:border-0 hover:bg-gray-50">
+                          <td className="py-2 px-2 font-medium text-navy">{record.opponent}</td>
+                          <td className="py-2 px-2 text-center">{record.played}</td>
+                          <td className="py-2 px-2 text-center text-green-600 font-semibold">{record.won}</td>
+                          <td className="py-2 px-2 text-center text-gray-600">{record.drawn}</td>
+                          <td className="py-2 px-2 text-center text-red-600 font-semibold">{record.lost}</td>
+                          <td className="py-2 px-2 text-center">{record.goalsFor}</td>
+                          <td className="py-2 px-2 text-center">{record.goalsAgainst}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
-          )}
-
-          {/* Remaining Fixtures */}
-          {stats.matchesRemaining > 0 && (
-            <div className="mt-8 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <h2 className="text-lg font-bold text-navy px-4 py-3 bg-gray-50">
-                Próximos Partidos ({stats.matchesRemaining})
-              </h2>
-              <div className="p-4 space-y-2">
-                {stats.fixtures.filter((f: any) => !f.homeScore && !f.awayScore).map((match: any, idx: number) => (
-                  <div key={idx} className="flex justify-between items-center py-2 border-b last:border-0">
-                    <span className={match.homeTeam.includes('SED') ? 'font-bold' : ''}>{match.homeTeam}</span>
-                    <span className="text-gray-400">vs</span>
-                    <span className={match.awayTeam.includes('SED') ? 'font-bold' : ''}>{match.awayTeam}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          </div>
         </>
       ) : (
         <p className="text-center text-gray-400 py-12">No hay datos disponibles</p>

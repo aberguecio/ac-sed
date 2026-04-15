@@ -2,6 +2,7 @@ import { generateText } from 'ai'
 import { openai, createOpenAI } from '@ai-sdk/openai'
 import type { Match } from '@prisma/client'
 import { prisma } from '@/lib/db'
+import { isACSED } from '@/lib/team-utils'
 
 function getModel() {
   const model = process.env.AI_MODEL ?? 'gpt-4o-mini'
@@ -26,8 +27,14 @@ export async function getMatchContext(match: Match) {
   const hasPhaseContext = match.tournamentId !== null && match.stageId !== null
   const hasGroupContext = hasPhaseContext && match.groupId !== null
 
+  // Get opponent name for historical lookup
+  const homeTeamName = match.homeTeam?.name ?? 'TBD'
+  const awayTeamName = match.awayTeam?.name ?? 'TBD'
+  const isHome = isACSED(homeTeamName)
+  const opponentName = isHome ? awayTeamName : homeTeamName
+
   // Fetch all context data in parallel
-  const [goals, cards, previousMatches, upcomingMatches, otherMatchesInRound] = await Promise.all([
+  const [goals, cards, previousMatches, upcomingMatches, otherMatchesInRound, historicalMatches] = await Promise.all([
     prisma.matchGoal.findMany({
       where: { matchId: match.id },
       include: { scrapedPlayer: true }
@@ -96,6 +103,35 @@ export async function getMatchContext(match: Match) {
           },
         })
       : Promise.resolve([]),
+    // Historical matches against this opponent (outside current phase)
+    prisma.match.findMany({
+      where: {
+        OR: [
+          {
+            homeTeam: { name: opponentName },
+            awayTeam: { name: { contains: 'AC SED', mode: 'insensitive' } },
+          },
+          {
+            awayTeam: { name: opponentName },
+            homeTeam: { name: { contains: 'AC SED', mode: 'insensitive' } },
+          },
+        ],
+        homeScore: { not: null }, // Only played matches
+        id: { not: match.id }, // Exclude current match
+        // Exclude matches from the current phase
+        NOT: hasPhaseContext
+          ? {
+              tournamentId: match.tournamentId!,
+              stageId: match.stageId!,
+            }
+          : undefined,
+      },
+      include: {
+        homeTeam: true,
+        awayTeam: true,
+      },
+      orderBy: { date: 'desc' },
+    }),
   ])
 
   // Calculate standings based on matches played up to this point in time
@@ -210,6 +246,7 @@ export async function getMatchContext(match: Match) {
     standingsRows,
     upcomingMatches,
     otherMatchesInRound,
+    historicalMatches,
     hasPhaseContext,
     hasGroupContext,
   }
@@ -242,6 +279,7 @@ export async function generateMatchNews(
     standingsRows,
     upcomingMatches,
     otherMatchesInRound,
+    historicalMatches,
     hasPhaseContext,
     hasGroupContext,
   } = context
@@ -358,6 +396,41 @@ export async function generateMatchNews(
     }
   }
 
+  // Build historical head-to-head info
+  let historicalInfo = ''
+  if (historicalMatches.length > 0) {
+    // Calculate historical record
+    let wins = 0
+    let draws = 0
+    let losses = 0
+    const matchDetails: string[] = []
+
+    for (const m of historicalMatches) {
+      const homeTeamName = m.homeTeam?.name ?? 'TBD'
+      const awayTeamName = m.awayTeam?.name ?? 'TBD'
+      const isHomeMatch = isACSED(homeTeamName)
+      const acsedScore = isHomeMatch ? (m.homeScore ?? 0) : (m.awayScore ?? 0)
+      const rivalScore = isHomeMatch ? (m.awayScore ?? 0) : (m.homeScore ?? 0)
+
+      if (acsedScore > rivalScore) wins++
+      else if (acsedScore < rivalScore) losses++
+      else draws++
+
+      // Add last 3 matches with dates
+      if (matchDetails.length < 3) {
+        const resultLabel = acsedScore > rivalScore ? 'victoria' : acsedScore < rivalScore ? 'derrota' : 'empate'
+        const dateStr = m.date.toLocaleDateString('es-CL', { year: 'numeric', month: 'short' })
+        matchDetails.push(`${resultLabel} ${acsedScore}-${rivalScore} (${dateStr})`)
+      }
+    }
+
+    const total = wins + draws + losses
+    historicalInfo = `\n- Historial vs ${rival} (partidos FUERA de la fase actual): ${wins} victorias, ${draws} empates, ${losses} derrotas en ${total} enfrentamientos previos`
+    if (matchDetails.length > 0) {
+      historicalInfo += `\n  Últimos enfrentamientos: ${matchDetails.join(' | ')}`
+    }
+  }
+
   // Build upcoming matches info with rivals' form
   let upcomingInfo = ''
   if (hasPhaseContext) {
@@ -438,7 +511,7 @@ Datos del partido:
 - ${isHome ? 'Local' : 'Visitante'}: AC SED
 - Rival: ${rival}
 - Resultado: AC SED ${acsedScore ?? '?'} - ${rivalScore ?? '?'} ${rival}
-- ${match.roundName ? `Jornada: ${match.roundName}` : ''}${goalsInfo}${cardsInfo}${streakInfo}${standingsInfo}${otherResultsInfo}${upcomingInfo}
+- ${match.roundName ? `Jornada: ${match.roundName}` : ''}${goalsInfo}${cardsInfo}${streakInfo}${standingsInfo}${otherResultsInfo}${historicalInfo}${upcomingInfo}
 
 Genera:
 1. Un TÍTULO periodístico corto y atractivo (máximo 10 palabras)
@@ -447,11 +520,12 @@ Genera:
    - Menciona a los goleadores específicos si los hay
    - Desempeño del equipo e importancia del partido para la tabla
    - Contexto de la racha y clasificación si es relevante
+   - Si hay historial vs el rival (partidos FUERA de esta fase), úsalo para dar contexto interesante (ej: "rompimos una racha negativa", "mantuvimos el buen récord histórico")
    - Si es relevante, menciona cómo afectaron otros resultados de la jornada a nuestra posición
    - En los últimos 2 partidos de la fase, incluye cálculos de puntos necesarios para objetivos
    - Usa el contexto de manera inteligente: NO menciones todo, solo lo que hace la historia más interesante
 
-IMPORTANTE: Solo usa información relevante para la narrativa. Si estamos en mitad de tabla sin opciones claras, no fuerces mencionar clasificación. Si otros resultados no nos afectan, no los menciones.
+IMPORTANTE: Solo usa información relevante para la narrativa. Si estamos en mitad de tabla sin opciones claras, no fuerces mencionar clasificación. Si otros resultados no nos afectan, no los menciones. El historial vs el rival solo menciónalo si aporta valor a la narrativa.
 
 Responde ÚNICAMENTE en este formato JSON (sin markdown):
 {"title": "...", "content": "..."}`
