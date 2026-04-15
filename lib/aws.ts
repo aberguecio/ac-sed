@@ -112,7 +112,7 @@ function buildEmailHtml(article: Article, subscriber: Subscriber, siteUrl: strin
                     <table cellpadding="0" cellspacing="0">
                       <tr>
                         <td style="height:48px;">
-                          <img src="${siteUrl}/ACSED-transaparent.webp" alt="AC SED" style="height:48px;width:auto;display:block;" />
+                          <img src="${siteUrl}/ACSED-email.webp" alt="AC SED" style="height:48px;width:auto;display:block;" />
                         </td>
                         <td style="padding-left:10px;">
                           <span style="color:#FAF7F0;font-weight:bold;font-size:18px;">AC SED</span>
