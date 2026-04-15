@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const withAliases = req.nextUrl.searchParams.get('withAliases') === '1'
   const players = await prisma.player.findMany({
     where: { active: true },
     orderBy: [{ number: 'asc' }, { name: 'asc' }],
+    include: withAliases ? { aliases: { select: { id: true, alias: true }, orderBy: { createdAt: 'asc' } } } : undefined,
   })
   return NextResponse.json(players)
 }

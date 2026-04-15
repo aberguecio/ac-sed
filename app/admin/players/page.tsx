@@ -3,6 +3,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { HexagonStats, type PlayerStats } from '@/components/hexagon-stats'
 
+interface PlayerAlias {
+  id: number
+  alias: string
+}
+
 interface Player {
   id: number
   name: string
@@ -71,6 +76,11 @@ export default function AdminPlayersPage() {
   const [allUnlinkedScraped, setAllUnlinkedScraped] = useState<ScrapedPlayer[]>([])
   const [linkingPlayerId, setLinkingPlayerId] = useState<number | null>(null)
 
+  // Alias state
+  const [aliases, setAliases] = useState<PlayerAlias[]>([])
+  const [newAlias, setNewAlias] = useState('')
+  const [addingAlias, setAddingAlias] = useState(false)
+
   async function fetchPlayers() {
     const res = await fetch('/api/players')
     setPlayers(await res.json())
@@ -89,6 +99,11 @@ export default function AdminPlayersPage() {
     fetchLinkData()
   }, [])
 
+  async function fetchAliases(playerId: number) {
+    const res = await fetch(`/api/admin/players/${playerId}/aliases`)
+    setAliases(await res.json())
+  }
+
   function startEdit(p: Player) {
     setEditId(p.id)
     setForm({ name: p.name, position: p.position ?? '', number: p.number?.toString() ?? '', bio: p.bio ?? '' })
@@ -103,6 +118,9 @@ export default function AdminPlayersPage() {
     setPhotoUrl(p.photoUrl)
     setPhotoPreview(p.photoUrl)
     setPhotoFile(null)
+    setAliases([])
+    setNewAlias('')
+    fetchAliases(p.id)
   }
 
   function cancelEdit() {
@@ -112,6 +130,32 @@ export default function AdminPlayersPage() {
     setPhotoUrl(null)
     setPhotoPreview(null)
     setPhotoFile(null)
+    setAliases([])
+    setNewAlias('')
+  }
+
+  async function addAlias() {
+    if (!editId || !newAlias.trim()) return
+    setAddingAlias(true)
+    const res = await fetch(`/api/admin/players/${editId}/aliases`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ alias: newAlias.trim() }),
+    })
+    if (res.ok) {
+      setNewAlias('')
+      await fetchAliases(editId)
+    } else {
+      const data = await res.json()
+      alert(data.error || 'Error al agregar alias')
+    }
+    setAddingAlias(false)
+  }
+
+  async function removeAlias(aliasId: number) {
+    if (!editId) return
+    await fetch(`/api/admin/players/${editId}/aliases/${aliasId}`, { method: 'DELETE' })
+    await fetchAliases(editId)
   }
 
   function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -387,6 +431,53 @@ export default function AdminPlayersPage() {
                 })}
               </div>
             </div>
+
+            {/* Aliases (only shown when editing) */}
+            {editId && (
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
+                  Sobrenombres / Aliases
+                </label>
+                <p className="text-xs text-gray-400 mb-2">
+                  Se usan para detectar al jugador en mensajes de WhatsApp.
+                </p>
+                <div className="space-y-1 mb-2">
+                  {aliases.length === 0 && (
+                    <p className="text-xs text-gray-300 italic">Sin aliases todavía.</p>
+                  )}
+                  {aliases.map(a => (
+                    <div key={a.id} className="flex items-center gap-2 bg-gray-50 rounded px-2 py-1">
+                      <span className="flex-1 text-xs text-navy font-mono">{a.alias}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeAlias(a.id)}
+                        className="text-xs text-gray-300 hover:text-red-400"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newAlias}
+                    onChange={e => setNewAlias(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addAlias() } }}
+                    placeholder="Nuevo alias…"
+                    className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy"
+                  />
+                  <button
+                    type="button"
+                    onClick={addAlias}
+                    disabled={addingAlias || !newAlias.trim()}
+                    className="px-3 py-1.5 bg-navy text-cream rounded-lg text-sm font-semibold hover:bg-navy-light disabled:opacity-40"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="flex gap-2 pt-1">
               <button
