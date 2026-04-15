@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { sendNewsletterEmail, type StandingRow } from '@/lib/aws'
 import { isACSED } from '@/lib/team-utils'
+import { getMatchContext } from '@/lib/ai'
 
 export async function POST(
   req: NextRequest,
@@ -27,26 +28,21 @@ export async function POST(
     return NextResponse.json({ error: 'La noticia debe estar publicada antes de enviar el newsletter' }, { status: 400 })
   }
 
-  const tournamentId = article.match?.tournamentId ?? 201
-  const stageId = article.match?.stageId ?? 396
-  const groupId = article.match?.groupId ?? 2300
-
-  const rawStandings = await prisma.standing.findMany({
-    where: { tournamentId, stageId, groupId },
-    include: { team: true },
-    orderBy: { position: 'asc' },
-  })
-
-  const standings: StandingRow[] = rawStandings.map((s) => ({
-    position: s.position,
-    teamName: s.team.name,
-    played: s.played,
-    won: s.won,
-    drawn: s.drawn,
-    lost: s.lost,
-    points: s.points,
-    isACSED: isACSED(s.team.name),
-  }))
+  // Calculate standings at the time of the match (if there is a match)
+  let standings: StandingRow[] = []
+  if (article.match) {
+    const context = await getMatchContext(article.match)
+    standings = context.standingsRows.map((row) => ({
+      position: row.position,
+      teamName: row.teamName,
+      played: row.won + row.drawn + row.lost,
+      won: row.won,
+      drawn: row.drawn,
+      lost: row.lost,
+      points: row.points,
+      isACSED: isACSED(row.teamName),
+    }))
+  }
 
   const subscribers = await prisma.newsletterSubscriber.findMany({
     where: { active: true },

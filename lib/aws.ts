@@ -71,7 +71,17 @@ function buildStandingsHtml(standings: StandingRow[]): string {
 function buildEmailHtml(article: Article, subscriber: Subscriber, siteUrl: string): string {
   const articleUrl = `${siteUrl}/news/${article.slug}`
   const unsubscribeUrl = `${siteUrl}/unsubscribe?token=${subscriber.unsubscribeToken}`
-  const excerpt = article.content.replace(/\n+/g, ' ').slice(0, 600).trim() + '...'
+
+  // Mantener párrafos separados y limitar a 1000 caracteres
+  const fullContent = article.content.trim()
+  const excerptRaw = fullContent.slice(0, 1000)
+  // Si cortamos en medio de un párrafo, terminarlo con puntos suspensivos
+  const excerpt = excerptRaw.length < fullContent.length ? excerptRaw.trim() + '...' : excerptRaw
+
+  // Convertir párrafos separados por \n en elementos HTML <p>
+  const paragraphs = excerpt.split('\n').filter(p => p.trim()).map(p =>
+    `<p style="color:#555555;font-size:15px;line-height:1.7;text-align:justify;margin:0 0 16px 0;">${p.trim()}</p>`
+  ).join('')
 
   const imageBlock = article.imageUrl
     ? `<img src="${article.imageUrl}" alt="${article.title}" style="width:100%;max-width:600px;border-radius:8px;margin-bottom:24px;display:block;" />`
@@ -122,8 +132,8 @@ function buildEmailHtml(article: Article, subscriber: Subscriber, siteUrl: strin
             <td style="padding:32px;">
               ${imageBlock}
               <h1 style="color:#1B2B4B;font-size:24px;font-weight:800;margin:0 0 16px 0;line-height:1.3;">${article.title}</h1>
-              <p style="color:#555555;font-size:15px;line-height:1.7;margin:0 0 24px 0;">${excerpt}</p>
-              <a href="${articleUrl}" style="display:inline-block;background-color:#1B2B4B;color:#FAF7F0;text-decoration:none;font-weight:bold;font-size:14px;padding:12px 28px;border-radius:8px;">
+              ${paragraphs}
+              <a href="${articleUrl}" style="display:inline-block;background-color:#1B2B4B;color:#FAF7F0;text-decoration:none;font-weight:bold;font-size:14px;padding:12px 28px;border-radius:8px;margin-top:8px;">
                 Leer nota completa →
               </a>
               ${standingsBlock}

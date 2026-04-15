@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import type { Metadata } from 'next'
 import { StandingsTable } from '@/components/standings-table'
+import { getMatchContext } from '@/lib/ai'
 
 interface Props {
   params: Promise<{ slug: string }>
@@ -31,15 +32,36 @@ export default async function NewsDetailPage({ params }: Props) {
 
   if (!article) notFound()
 
-  const tournamentId = article.match?.tournamentId ?? 201
-  const stageId = article.match?.stageId ?? 396
-  const groupId = article.match?.groupId ?? 2300
+  // Calculate standings at the time of the match (if there is a match)
+  let standings: any[] = []
+  if (article.match) {
+    const context = await getMatchContext(article.match)
 
-  const standings = await prisma.standing.findMany({
-    where: { tournamentId, stageId, groupId },
-    include: { team: true },
-    orderBy: { position: 'asc' },
-  })
+    // Convert standingsRows to the format expected by StandingsTable
+    if (context.standingsRows.length > 0) {
+      // Get team IDs for each team name
+      const teamNames = context.standingsRows.map(s => s.teamName)
+      const teams = await prisma.team.findMany({
+        where: { name: { in: teamNames } }
+      })
+
+      standings = context.standingsRows.map(row => {
+        const team = teams.find(t => t.name === row.teamName)
+        return {
+          id: 0, // Not needed for display
+          position: row.position,
+          played: row.won + row.drawn + row.lost,
+          won: row.won,
+          drawn: row.drawn,
+          lost: row.lost,
+          goalsFor: row.goalsFor,
+          goalsAgainst: row.goalsAgainst,
+          points: row.points,
+          team: team || { id: 0, name: row.teamName, logoUrl: null }
+        }
+      })
+    }
+  }
 
   const date = new Date(article.generatedAt).toLocaleDateString('es-CL', {
     weekday: 'long',
@@ -78,7 +100,11 @@ export default async function NewsDetailPage({ params }: Props) {
 
         <div className="prose prose-lg max-w-none text-gray-700 leading-relaxed">
           {article.content.split('\n').map((paragraph, i) =>
-            paragraph.trim() ? <p key={i}>{paragraph}</p> : null
+            paragraph.trim() ? (
+              <p key={i} className="mb-4 text-justify">
+                {paragraph}
+              </p>
+            ) : null
           )}
         </div>
 

@@ -30,6 +30,14 @@ export default function AdminSubscribersPage() {
 
   useEffect(() => { fetchSubscribers() }, [])
 
+  async function activate(id: number) {
+    if (!confirm('¿Activar este suscriptor?')) return
+    setActionId(id)
+    await fetch(`/api/subscribers?id=${id}`, { method: 'PUT' })
+    await fetchSubscribers()
+    setActionId(null)
+  }
+
   async function deactivate(id: number) {
     if (!confirm('¿Desactivar este suscriptor?')) return
     setActionId(id)
@@ -116,18 +124,14 @@ export default function AdminSubscribersPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    {s.source === 'player' ? (
-                      s.isSubscribed ? (
-                        <span className="text-xs text-gray-400">Ya suscrito</span>
-                      ) : (
-                        <button
-                          onClick={() => addToSubscribers(s.email)}
-                          disabled={actionId !== null}
-                          className="text-xs px-3 py-1.5 rounded bg-green-50 text-green-600 hover:bg-green-100 disabled:opacity-40"
-                        >
-                          Añadir a suscriptores
-                        </button>
-                      )
+                    {s.id < 0 ? (
+                      <button
+                        onClick={() => addToSubscribers(s.email)}
+                        disabled={actionId !== null}
+                        className="text-xs px-3 py-1.5 rounded bg-green-50 text-green-600 hover:bg-green-100 disabled:opacity-40"
+                      >
+                        Añadir a suscriptores
+                      </button>
                     ) : s.active ? (
                       <button
                         onClick={() => deactivate(s.id)}
@@ -136,7 +140,15 @@ export default function AdminSubscribersPage() {
                       >
                         Desactivar
                       </button>
-                    ) : null}
+                    ) : (
+                      <button
+                        onClick={() => activate(s.id)}
+                        disabled={actionId === s.id}
+                        className="text-xs px-3 py-1.5 rounded bg-green-50 text-green-600 hover:bg-green-100 disabled:opacity-40"
+                      >
+                        Activar
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
