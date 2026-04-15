@@ -205,10 +205,10 @@ export default function StatsPage() {
           <p className="text-gray-600">No hay torneos disponibles. Ejecuta el scraper primero.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-lg p-4 shadow-sm mb-6">
-          <div className="flex gap-4 mb-4">
+        <div className="bg-white rounded-lg p-3 md:p-4 shadow-sm mb-6">
+          <div className="flex gap-2 md:gap-4 mb-3 md:mb-4">
             <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Torneo</label>
+              <label className="block text-xs md:text-sm font-medium text-gray-700 mb-1">Torneo</label>
               <select
                 value={selectedTournament?.id || ''}
                 onChange={(e) => {
@@ -218,7 +218,7 @@ export default function StatsPage() {
                     setSelectedStage(t.stages[0])
                   }
                 }}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                className="w-full border border-gray-300 rounded-lg px-2 py-1.5 md:px-3 md:py-2 text-sm"
               >
                 {tournaments.map((t) => (
                   <option key={t.id} value={t.id}>{t.name}</option>
@@ -226,14 +226,14 @@ export default function StatsPage() {
               </select>
             </div>
             <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Fase</label>
+              <label className="block text-xs md:text-sm font-medium text-gray-700 mb-1">Fase</label>
               <select
                 value={selectedStage?.id || ''}
                 onChange={(e) => {
                   const s = selectedTournament?.stages.find(s => s.id === Number(e.target.value))
                   if (s) setSelectedStage(s)
                 }}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                className="w-full border border-gray-300 rounded-lg px-2 py-1.5 md:px-3 md:py-2 text-sm"
                 disabled={!selectedTournament}
               >
                 {selectedTournament?.stages.map((s) => (
@@ -245,16 +245,16 @@ export default function StatsPage() {
 
           {/* Match Day Timeline */}
           {matchDays.length > 0 && selectedMatchDay !== null && (
-            <div className="border-t border-gray-200 pt-4">
+            <div className="border-t border-gray-200 pt-3 md:pt-4">
               <div className="relative">
                 {/* Match day dots */}
                 <div className="relative flex justify-between items-center">
                   {/* Line connecting dots - z-index 1 */}
-                  <div className="absolute top-5 left-0 right-0 h-1 bg-gray-200 pointer-events-none" style={{ zIndex: 1 }} />
+                  <div className="absolute top-3 md:top-5 left-0 right-0 h-0.5 md:h-1 bg-gray-200 pointer-events-none" style={{ zIndex: 1 }} />
 
                   {/* Active line - z-index 2 */}
                   <div
-                    className="absolute top-5 left-0 h-1 bg-navy transition-all duration-300 pointer-events-none"
+                    className="absolute top-3 md:top-5 left-0 h-0.5 md:h-1 bg-navy transition-all duration-300 pointer-events-none"
                     style={{
                       width: `${((selectedMatchDay - 1) / (matchDays.length - 1)) * 100}%`,
                       zIndex: 2
@@ -277,9 +277,9 @@ export default function StatsPage() {
                         style={{ zIndex: isSelected ? 4 : 3 }}
                       >
                         {/* Dot - always has white background to cover lines */}
-                        <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center relative">
+                        <div className="w-7 h-7 md:w-10 md:h-10 rounded-full bg-white flex items-center justify-center relative">
                           <div
-                            className={`w-full h-full rounded-full border-4 transition-all duration-200 flex items-center justify-center font-bold text-sm
+                            className={`w-full h-full rounded-full border-2 md:border-4 transition-all duration-200 flex items-center justify-center font-bold text-xs md:text-sm
                               ${isSelected
                                 ? 'border-navy text-white bg-navy scale-110 shadow-lg'
                                 : isPast
@@ -292,8 +292,8 @@ export default function StatsPage() {
                         </div>
 
                         {/* Date label */}
-                        <div className="mt-2 text-center">
-                          <div className="text-xs text-gray-400 whitespace-nowrap">
+                        <div className="mt-1 md:mt-2 text-center">
+                          <div className="text-[10px] md:text-xs text-gray-400 whitespace-nowrap">
                             {new Date(md.date).toLocaleDateString('es-CL', {
                               day: '2-digit',
                               month: 'short'
