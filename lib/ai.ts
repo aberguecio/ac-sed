@@ -23,7 +23,7 @@ function getModel() {
 }
 
 // Export this function to reuse in other parts of the app
-export async function getMatchContext(match: Match) {
+export async function getMatchContext(match: Match & { homeTeam?: { name: string } | null; awayTeam?: { name: string } | null }) {
   const hasPhaseContext = match.tournamentId !== null && match.stageId !== null
   const hasGroupContext = hasPhaseContext && match.groupId !== null
 
