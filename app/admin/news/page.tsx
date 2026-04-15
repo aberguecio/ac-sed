@@ -10,7 +10,9 @@ interface Article {
   featured: boolean
   generatedAt: string
   aiProvider: string
+  imageUrl: string | null
   emailSentAt: string | null
+  instagramPostedAt: string | null
 }
 
 interface ArticleDetail {
@@ -72,6 +74,10 @@ export default function AdminNewsPage() {
   const [sendingId, setSendingId] = useState<number | null>(null)
   const [sendResult, setSendResult] = useState<{ id: number; sent: number } | null>(null)
 
+  const [postingInstagramId, setPostingInstagramId] = useState<number | null>(null)
+  const [instagramResult, setInstagramResult] = useState<{ id: number } | null>(null)
+  const [instagramError, setInstagramError] = useState<string | null>(null)
+
   async function fetchArticles() {
     const res = await fetch('/api/news?all=true&perPage=50')
     const data = await res.json()
@@ -115,6 +121,21 @@ export default function AdminNewsPage() {
     setSendResult({ id: article.id, sent: data.sent ?? 0 })
     await fetchArticles()
     setSendingId(null)
+  }
+
+  async function publishToInstagram(article: Article) {
+    if (!confirm(`¿Publicar en Instagram?\n\n"${article.title}"`)) return
+    setInstagramError(null)
+    setPostingInstagramId(article.id)
+    const res = await fetch(`/api/news/${article.id}/post-instagram`, { method: 'POST' })
+    if (res.ok) {
+      setInstagramResult({ id: article.id })
+    } else {
+      const data = await res.json()
+      setInstagramError(data.error ?? 'Error publicando en Instagram')
+    }
+    await fetchArticles()
+    setPostingInstagramId(null)
   }
 
   function openCreate() {
@@ -257,6 +278,22 @@ export default function AdminNewsPage() {
         </div>
       )}
 
+      {instagramResult && (
+        <div className="mb-4 bg-purple-50 border border-purple-200 rounded-lg px-4 py-3 flex items-center justify-between">
+          <p className="text-purple-700 text-sm font-medium">
+            Publicado en Instagram correctamente.
+          </p>
+          <button onClick={() => setInstagramResult(null)} className="text-purple-400 hover:text-purple-600 text-lg leading-none">×</button>
+        </div>
+      )}
+
+      {instagramError && (
+        <div className="mb-4 bg-red-50 border border-red-200 rounded-lg px-4 py-3 flex items-center justify-between">
+          <p className="text-red-700 text-sm font-medium">{instagramError}</p>
+          <button onClick={() => setInstagramError(null)} className="text-red-400 hover:text-red-600 text-lg leading-none">×</button>
+        </div>
+      )}
+
       {loading ? (
         <p className="text-gray-400">Cargando…</p>
       ) : articles.length === 0 ? (
@@ -319,6 +356,24 @@ export default function AdminNewsPage() {
                             className="text-xs px-3 py-1.5 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40"
                           >
                             {sendingId === a.id ? 'Enviando…' : 'Enviar newsletter'}
+                          </button>
+                        )
+                      )}
+                      {a.published && a.imageUrl && (
+                        a.instagramPostedAt ? (
+                          <span
+                            title={`Publicado en Instagram el ${new Date(a.instagramPostedAt).toLocaleDateString('es-CL')}`}
+                            className="text-xs px-3 py-1.5 rounded bg-gray-100 text-gray-400 cursor-default"
+                          >
+                            Instagram ✓
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => publishToInstagram(a)}
+                            disabled={postingInstagramId === a.id || actionId === a.id}
+                            className="text-xs px-3 py-1.5 rounded bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-40"
+                          >
+                            {postingInstagramId === a.id ? 'Publicando…' : 'Instagram'}
                           </button>
                         )
                       )}

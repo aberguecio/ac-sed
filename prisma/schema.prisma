@@ -195,7 +195,9 @@ model NewsArticle {
   generatedAt DateTime  @default(now())
   published   Boolean   @default(false)
   featured    Boolean   @default(false)
-  emailSentAt DateTime?
+  emailSentAt         DateTime?
+  instagramPostId     String?
+  instagramPostedAt   DateTime?
   match       Match?    @relation(fields: [matchId], references: [id], onDelete: SetNull)
 }
 

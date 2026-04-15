@@ -18,6 +18,7 @@ export async function GET(req: NextRequest) {
       select: {
         id: true, title: true, slug: true, published: true, featured: true,
         generatedAt: true, aiProvider: true, imageUrl: true, emailSentAt: true,
+        instagramPostedAt: true,
       },
     }),
     prisma.newsArticle.count({ where }),
