@@ -36,6 +36,8 @@ interface ArticleDetail {
     standings: string[]
     otherResultsCount: number
     otherResults: string[]
+    historicalMatchesCount: number
+    historicalMatches: Array<{ date: string; match: string }>
   }
 }
 
