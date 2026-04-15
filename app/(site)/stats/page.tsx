@@ -9,6 +9,11 @@ interface Tournament {
   stages: { id: number; name: string }[]
 }
 
+interface MatchDay {
+  matchDay: number
+  date: string
+}
+
 interface TeamStats {
   standings: any[]
   topScorers: any[]
@@ -29,8 +34,11 @@ export default function StatsPage() {
   const [selectedStage, setSelectedStage] = useState<{ id: number; name: string } | null>(null)
   const [stats, setStats] = useState<TeamStats | null>(null)
   const [loading, setLoading] = useState(false)
+  const [loadingMatchDayChange, setLoadingMatchDayChange] = useState(false)
   const [loadingTournaments, setLoadingTournaments] = useState(true)
   const [generatingAnalysis, setGeneratingAnalysis] = useState(false)
+  const [matchDays, setMatchDays] = useState<MatchDay[]>([])
+  const [selectedMatchDay, setSelectedMatchDay] = useState<number | null>(null)
 
   async function fetchTournaments() {
     setLoadingTournaments(true)
@@ -48,23 +56,77 @@ export default function StatsPage() {
     setLoadingTournaments(false)
   }
 
-  async function fetchStats() {
+  async function fetchMatchDays() {
     if (!selectedTournament || !selectedStage) return
 
-    setLoading(true)
     try {
-      const res = await fetch(`/api/stats?tournamentId=${selectedTournament.id}&stageId=${selectedStage.id}`)
+      const res = await fetch(`/api/stats/match-days?tournamentId=${selectedTournament.id}&stageId=${selectedStage.id}`)
+      const data = await res.json()
+      setMatchDays(data)
+
+      // Set selected match day to the most recent played match day
+      if (data.length > 0) {
+        // Get matches to find the most recent played match
+        const matchesRes = await fetch(`/api/stats?tournamentId=${selectedTournament.id}&stageId=${selectedStage.id}`)
+        const matchesData = await matchesRes.json()
+
+        // Find the most recent match day that has been played
+        const today = new Date()
+        let mostRecentPlayedDay = 1
+
+        for (const md of data) {
+          const matchDate = new Date(md.date)
+          if (matchDate <= today) {
+            mostRecentPlayedDay = md.matchDay
+          }
+        }
+
+        setSelectedMatchDay(mostRecentPlayedDay)
+      }
+    } catch (err) {
+      console.error('Error fetching match days:', err)
+    }
+  }
+
+  async function fetchStats(isMatchDayChange = false) {
+    if (!selectedTournament || !selectedStage) return
+
+    // Use different loading state for match day changes vs initial load
+    if (isMatchDayChange) {
+      setLoadingMatchDayChange(true)
+    } else {
+      setLoading(true)
+    }
+
+    try {
+      // Build query params
+      let url = `/api/stats?tournamentId=${selectedTournament.id}&stageId=${selectedStage.id}`
+
+      // Add upToDate filter if a specific match day is selected
+      if (selectedMatchDay !== null && matchDays.length > 0) {
+        const matchDay = matchDays.find(md => md.matchDay === selectedMatchDay)
+        if (matchDay) {
+          url += `&upToDate=${matchDay.date}`
+        }
+      }
+
+      const res = await fetch(url)
       const data = await res.json()
       setStats(data)
 
-      // Si no hay análisis, generarlo en background
-      if (!data.analysis && data.dataHash) {
+      // Si no hay análisis, generarlo en background (only for latest data)
+      if (!data.analysis && data.dataHash && selectedMatchDay === matchDays[matchDays.length - 1]?.matchDay) {
         generateAnalysis(data)
       }
     } catch (err) {
       console.error('Error fetching stats:', err)
     }
-    setLoading(false)
+
+    if (isMatchDayChange) {
+      setLoadingMatchDayChange(false)
+    } else {
+      setLoading(false)
+    }
   }
 
   async function generateAnalysis(statsData: any) {
@@ -104,9 +166,23 @@ export default function StatsPage() {
 
   useEffect(() => {
     if (selectedStage) {
-      fetchStats()
+      fetchMatchDays()
     }
   }, [selectedStage])
+
+  // Initial load when stage is selected
+  useEffect(() => {
+    if (selectedStage && selectedMatchDay !== null) {
+      fetchStats(false)
+    }
+  }, [selectedStage])
+
+  // Match day change - use different loading state
+  useEffect(() => {
+    if (selectedStage && selectedMatchDay !== null) {
+      fetchStats(true)
+    }
+  }, [selectedMatchDay])
 
   const goalsPerMatch = stats && stats.matchesPlayed > 0
     ? (stats.goalsFor / stats.matchesPlayed).toFixed(2)
@@ -130,7 +206,7 @@ export default function StatsPage() {
         </div>
       ) : (
         <div className="bg-white rounded-lg p-4 shadow-sm mb-6">
-          <div className="flex gap-4">
+          <div className="flex gap-4 mb-4">
             <div className="flex-1">
               <label className="block text-sm font-medium text-gray-700 mb-1">Torneo</label>
               <select
@@ -166,6 +242,71 @@ export default function StatsPage() {
               </select>
             </div>
           </div>
+
+          {/* Match Day Timeline */}
+          {matchDays.length > 0 && selectedMatchDay !== null && (
+            <div className="border-t border-gray-200 pt-4">
+              <div className="relative">
+                {/* Match day dots */}
+                <div className="relative flex justify-between items-center">
+                  {/* Line connecting dots - z-index 1 */}
+                  <div className="absolute top-5 left-0 right-0 h-1 bg-gray-200 pointer-events-none" style={{ zIndex: 1 }} />
+
+                  {/* Active line - z-index 2 */}
+                  <div
+                    className="absolute top-5 left-0 h-1 bg-navy transition-all duration-300 pointer-events-none"
+                    style={{
+                      width: `${((selectedMatchDay - 1) / (matchDays.length - 1)) * 100}%`,
+                      zIndex: 2
+                    }}
+                  />
+
+                  {matchDays.map((md) => {
+                    const isSelected = md.matchDay === selectedMatchDay
+                    const isPast = md.matchDay < selectedMatchDay
+                    const today = new Date()
+                    const matchDate = new Date(md.date)
+                    const isFuture = matchDate > today
+
+                    return (
+                      <button
+                        key={md.matchDay}
+                        onClick={() => !isFuture && setSelectedMatchDay(md.matchDay)}
+                        disabled={isFuture || loadingMatchDayChange}
+                        className={`flex flex-col items-center group relative ${isFuture || loadingMatchDayChange ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+                        style={{ zIndex: isSelected ? 4 : 3 }}
+                      >
+                        {/* Dot - always has white background to cover lines */}
+                        <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center relative">
+                          <div
+                            className={`w-full h-full rounded-full border-4 transition-all duration-200 flex items-center justify-center font-bold text-sm
+                              ${isSelected
+                                ? 'border-navy text-white bg-navy scale-110 shadow-lg'
+                                : isPast
+                                  ? 'bg-navy/20 border-navy/40 text-navy hover:scale-105'
+                                  : 'bg-white border-gray-300 text-gray-400 hover:border-gray-400 hover:scale-105'
+                              }`}
+                          >
+                            {md.matchDay}
+                          </div>
+                        </div>
+
+                        {/* Date label */}
+                        <div className="mt-2 text-center">
+                          <div className="text-xs text-gray-400 whitespace-nowrap">
+                            {new Date(md.date).toLocaleDateString('es-CL', {
+                              day: '2-digit',
+                              month: 'short'
+                            })}
+                          </div>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
