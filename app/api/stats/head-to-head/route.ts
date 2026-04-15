@@ -5,6 +5,8 @@ const ACSED_TEAM_NAME = 'AC Sed'
 
 interface HeadToHeadRecord {
   opponent: string
+  opponentId: number | null
+  opponentLogo: string | null
   played: number
   won: number
   drawn: number
@@ -35,7 +37,8 @@ export async function GET() {
 
     for (const match of matches) {
       const isHome = match.homeTeam?.name === ACSED_TEAM_NAME
-      const opponent = isHome ? match.awayTeam?.name : match.homeTeam?.name
+      const opponentTeam = isHome ? match.awayTeam : match.homeTeam
+      const opponent = opponentTeam?.name
 
       if (!opponent || opponent === ACSED_TEAM_NAME) continue
 
@@ -45,6 +48,8 @@ export async function GET() {
       if (!recordsByOpponent.has(opponent)) {
         recordsByOpponent.set(opponent, {
           opponent,
+          opponentId: opponentTeam?.id ?? null,
+          opponentLogo: opponentTeam?.logoUrl ?? null,
           played: 0,
           won: 0,
           drawn: 0,

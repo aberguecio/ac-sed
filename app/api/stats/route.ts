@@ -73,26 +73,17 @@ export async function GET(request: Request) {
       }))
     }
 
-    // Get all matches from DB (only AC SED matches for this tournament/stage)
-    // If upToDate is provided, only get matches up to that date
-    const matchWhereClause: any = {
-      tournamentId,
-      stageId,
-      OR: [
-        { homeTeam: { name: ACSED_TEAM_NAME } },
-        { awayTeam: { name: ACSED_TEAM_NAME } }
-      ]
-    }
-
-    if (upToDate) {
-      // Add 1 day to include matches on the selected date
-      const maxDate = new Date(upToDate)
-      maxDate.setDate(maxDate.getDate() + 1)
-      matchWhereClause.date = { lte: maxDate }
-    }
-
+    // Get ALL matches from DB (only AC SED matches for this tournament/stage)
+    // Always get all matches, but filter results based on upToDate
     const allMatchesFromDB = await prisma.match.findMany({
-      where: matchWhereClause,
+      where: {
+        tournamentId,
+        stageId,
+        OR: [
+          { homeTeam: { name: ACSED_TEAM_NAME } },
+          { awayTeam: { name: ACSED_TEAM_NAME } }
+        ]
+      },
       include: {
         homeTeam: true,
         awayTeam: true,
@@ -100,12 +91,29 @@ export async function GET(request: Request) {
       orderBy: { date: 'desc' },
     })
 
-    const fixtures = allMatchesFromDB.map((m) => ({
-      homeTeam: m.homeTeam?.name ?? 'TBD',
-      awayTeam: m.awayTeam?.name ?? 'TBD',
-      homeScore: m.homeScore,
-      awayScore: m.awayScore,
-    }))
+    // If upToDate is provided, hide scores for matches after that date
+    let upToDateObj: Date | null = null
+    if (upToDate) {
+      upToDateObj = new Date(upToDate)
+      upToDateObj.setDate(upToDateObj.getDate() + 1)
+    }
+
+    const fixtures = allMatchesFromDB.map((m) => {
+      // If upToDate filter is active and match is after the filter date, hide scores
+      const shouldHideScore = upToDateObj && m.date > upToDateObj
+
+      return {
+        date: m.date,
+        homeTeam: m.homeTeam?.name ?? 'TBD',
+        homeTeamId: m.homeTeam?.id,
+        homeTeamLogo: m.homeTeam?.logoUrl,
+        awayTeam: m.awayTeam?.name ?? 'TBD',
+        awayTeamId: m.awayTeam?.id,
+        awayTeamLogo: m.awayTeam?.logoUrl,
+        homeScore: shouldHideScore ? null : m.homeScore,
+        awayScore: shouldHideScore ? null : m.awayScore,
+      }
+    })
 
     const matchesPlayed = fixtures.filter((f) => f.homeScore !== null && f.awayScore !== null).length
     const totalMatches = 5 // 5 matches per phase in Liga B

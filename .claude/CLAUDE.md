@@ -32,11 +32,12 @@
 - Framework: Next.js 15
 - Styling: Tailwind CSS
 - Team logos:
-  - AC SED logo: always use `/ACSED-transaparent.webp` from public folder
-  - Other teams logos from API:
-    - For images **>100x100px**: use base URL without size prefix (1024x1024 original)
-      - Format: `https://liga-b.nyc3.digitaloceanspaces.com/team/{teamId}/{logoUrl}`
-    - For images **≤100x100px**: use size prefix matching display size
-      - Available sizes: `28x28`, `48x48`, `50x50`, `80x80`
-      - Format: `https://liga-b.nyc3.digitaloceanspaces.com/team/{teamId}/{size}_{logoUrl}`
-      - Example: for 32px display → use `28x28_`, for 80px display → use `80x80_`
+  - **ALWAYS** use the `<TeamLogo>` component from `components/team-logo.tsx`
+  - **NEVER** manually build logo URLs or use `<img>` tags directly for team logos
+  - Import: `import { TeamLogo } from '@/components/team-logo'`
+  - Usage: `<TeamLogo teamId={team.id} teamName={team.name} logoUrl={team.logoUrl} size="md" />`
+  - Available sizes: `'sm'` (28px), `'md'` (80px), `'lg'` (128px)
+  - The component handles:
+    - AC SED logo: automatically uses `/ACSED-transaparent.webp`
+    - Other teams: uses API URL with correct size prefix
+    - Fallback: shows initials in gray circle if no logo available

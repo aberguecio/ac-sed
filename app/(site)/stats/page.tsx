@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { StandingsTable } from '@/components/standings-table'
+import { TeamLogo } from '@/components/team-logo'
+import { isACSED } from '@/lib/team-utils'
 
 interface Tournament {
   id: number
@@ -30,6 +32,8 @@ interface TeamStats {
 
 interface HeadToHeadRecord {
   opponent: string
+  opponentId: number | null
+  opponentLogo: string | null
   played: number
   won: number
   drawn: number
@@ -341,6 +345,159 @@ export default function StatsPage() {
             <StandingsTable standings={stats.standings} />
           </div>
 
+          {/* Last Match and Next Match (affected by timeline filter) */}
+          <div className="grid md:grid-cols-2 gap-6 mb-8">
+            {/* Last Match Result - from fixtures filtered by timeline */}
+            {(() => {
+              // Get last played match from fixtures (fixtures come in desc order by date)
+              const playedMatches = stats.fixtures.filter((f: any) => f.homeScore !== null && f.awayScore !== null)
+              if (playedMatches.length === 0) return null
+
+              // Since fixtures are ordered desc, the first match is the most recent
+              const lastMatchData = playedMatches[0]
+
+              return (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                  <h3 className="text-md font-bold text-navy px-4 py-2 bg-gray-50">Último Partido</h3>
+                  <div className="p-4">
+                    <div className="flex items-center justify-between gap-4">
+                      {/* Home Team */}
+                      <div className="flex flex-col items-center flex-1">
+                        <TeamLogo
+                          teamId={lastMatchData.homeTeamId}
+                          teamName={lastMatchData.homeTeam}
+                          logoUrl={lastMatchData.homeTeamLogo}
+                          size="md"
+                          className="h-16 w-16 md:h-20 md:w-20"
+                          textSize="text-[20px] md:text-[24px]"
+                        />
+                        <p className="text-xs md:text-sm font-semibold text-navy mt-2 text-center line-clamp-2">{lastMatchData.homeTeam}</p>
+                      </div>
+
+                      {/* Score */}
+                      <div className="flex flex-col items-center">
+                        <div className="text-2xl md:text-3xl font-bold text-navy">
+                          {lastMatchData.homeScore} - {lastMatchData.awayScore}
+                        </div>
+                      </div>
+
+                      {/* Away Team */}
+                      <div className="flex flex-col items-center flex-1">
+                        <TeamLogo
+                          teamId={lastMatchData.awayTeamId}
+                          teamName={lastMatchData.awayTeam}
+                          logoUrl={lastMatchData.awayTeamLogo}
+                          size="md"
+                          className="h-16 w-16 md:h-20 md:w-20"
+                          textSize="text-[20px] md:text-[24px]"
+                        />
+                        <p className="text-xs md:text-sm font-semibold text-navy mt-2 text-center line-clamp-2">{lastMatchData.awayTeam}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
+
+            {/* Next Match or Final Status */}
+            {(() => {
+              // Get upcoming matches from fixtures
+              const upcomingMatches = stats.fixtures.filter((f: any) => f.homeScore === null && f.awayScore === null)
+
+              // If there are upcoming matches, show the next one
+              if (upcomingMatches.length > 0) {
+                // Get the last upcoming match (earliest date) since they're in desc order
+                const nextMatchData = upcomingMatches[upcomingMatches.length - 1]
+                return (
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                    <h3 className="text-md font-bold text-navy px-4 py-2 bg-gray-50">Próximo Partido</h3>
+                    <div className="p-4">
+                      <div className="flex items-center justify-between gap-4">
+                        {/* Home Team */}
+                        <div className="flex flex-col items-center flex-1">
+                          <TeamLogo
+                            teamId={nextMatchData.homeTeamId}
+                            teamName={nextMatchData.homeTeam}
+                            logoUrl={nextMatchData.homeTeamLogo}
+                            size="md"
+                            className="h-16 w-16 md:h-20 md:w-20"
+                            textSize="text-[20px] md:text-[24px]"
+                          />
+                          <p className="text-xs md:text-sm font-semibold text-navy mt-2 text-center line-clamp-2">{nextMatchData.homeTeam}</p>
+                        </div>
+
+                        {/* VS */}
+                        <div className="flex flex-col items-center">
+                          <div className="text-xl md:text-2xl font-bold text-gray-400">VS</div>
+                        </div>
+
+                        {/* Away Team */}
+                        <div className="flex flex-col items-center flex-1">
+                          <TeamLogo
+                            teamId={nextMatchData.awayTeamId}
+                            teamName={nextMatchData.awayTeam}
+                            logoUrl={nextMatchData.awayTeamLogo}
+                            size="md"
+                            className="h-16 w-16 md:h-20 md:w-20"
+                            textSize="text-[20px] md:text-[24px]"
+                          />
+                          <p className="text-xs md:text-sm font-semibold text-navy mt-2 text-center line-clamp-2">{nextMatchData.awayTeam}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              } else if (stats.matchesRemaining === 0 && stats.standings.length > 0) {
+                // No upcoming matches - show final status
+                const acsedStanding = stats.standings.find((s: any) => isACSED(s.team?.name))
+                if (!acsedStanding) return null
+
+                const position = acsedStanding.position
+                const totalTeams = stats.standings.length
+
+                let statusText = ''
+                let statusColor = ''
+                let bgColor = ''
+                let icon = ''
+
+                if (position === 1) {
+                  statusText = 'CAMPEÓN'
+                  statusColor = 'text-yellow-600'
+                  bgColor = 'bg-gradient-to-r from-yellow-50 to-yellow-100'
+                  icon = '👑'
+                } else if (position === 2) {
+                  statusText = 'ASCENSO'
+                  statusColor = 'text-green-600'
+                  bgColor = 'bg-gradient-to-r from-green-50 to-green-100'
+                  icon = '⬆️'
+                } else if (position > totalTeams - 2) {
+                  statusText = 'DESCENSO'
+                  statusColor = 'text-red-600'
+                  bgColor = 'bg-gradient-to-r from-red-50 to-red-100'
+                  icon = '⬇️'
+                } else {
+                  statusText = 'MANTENCIÓN'
+                  statusColor = 'text-gray-600'
+                  bgColor = 'bg-gradient-to-r from-gray-50 to-gray-100'
+                  icon = '➡️'
+                }
+
+                return (
+                  <div className={`rounded-xl shadow-sm border border-gray-200 overflow-hidden ${bgColor}`}>
+                    <h3 className="text-md font-bold text-navy px-4 py-2 bg-white bg-opacity-70">Estado Final</h3>
+                    <div className="p-6">
+                      <div className="flex flex-col items-center gap-3">
+                        <div className="text-6xl">{icon}</div>
+                        <div className={`text-3xl font-extrabold ${statusColor}`}>{statusText}</div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              }
+              return null
+            })()}
+          </div>
+
           {/* Scorers Row: AC SED + Division */}
           <div className="grid md:grid-cols-2 gap-6 mb-8">
             {/* AC SED Scorers */}
@@ -415,7 +572,17 @@ export default function StatsPage() {
                     <tbody>
                       {headToHead.map((record, idx) => (
                         <tr key={idx} className="border-b last:border-0 hover:bg-gray-50">
-                          <td className="py-2 px-2 font-medium text-navy">{record.opponent}</td>
+                          <td className="py-2 px-2">
+                            <div className="flex items-center gap-2">
+                              <TeamLogo
+                                teamId={record.opponentId ?? 0}
+                                teamName={record.opponent}
+                                logoUrl={record.opponentLogo}
+                                size="sm"
+                              />
+                              <span className="font-medium text-navy">{record.opponent}</span>
+                            </div>
+                          </td>
                           <td className="py-2 px-2 text-center">{record.played}</td>
                           <td className="py-2 px-2 text-center text-green-600 font-semibold">{record.won}</td>
                           <td className="py-2 px-2 text-center text-gray-600">{record.drawn}</td>
