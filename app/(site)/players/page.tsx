@@ -2,7 +2,22 @@ import { prisma } from '@/lib/db'
 import { PlayerCard } from '@/components/player-card'
 import type { Metadata } from 'next'
 
-export const metadata: Metadata = { title: 'Plantel — AC SED' }
+export const metadata: Metadata = {
+  title: 'Plantel',
+  description: 'Plantel oficial de AC SED: jugadores, posiciones, números y estadísticas de goles en Liga B Chile.',
+  alternates: { canonical: '/players' },
+  openGraph: {
+    title: 'Plantel — AC SED',
+    description: 'Plantel oficial de AC SED: jugadores, posiciones y estadísticas.',
+    url: '/players',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Plantel — AC SED',
+    description: 'Plantel oficial de AC SED: jugadores, posiciones y estadísticas.',
+  },
+}
 export const revalidate = 300
 
 export default async function PlayersPage() {

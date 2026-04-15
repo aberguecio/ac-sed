@@ -9,11 +9,50 @@ interface Props {
   params: Promise<{ slug: string }>
 }
 
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://acsed.cl'
+
+function buildArticleDescription(content: string, max = 160): string {
+  const plain = content
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '') // strip markdown images
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1') // strip markdown links, keep text
+    .replace(/[#*_`>~-]+/g, ' ') // strip common markdown tokens
+    .replace(/<[^>]+>/g, ' ') // strip HTML tags
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (plain.length <= max) return plain
+  return plain.slice(0, max - 1).replace(/\s+\S*$/, '') + '…'
+}
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params
   const article = await prisma.newsArticle.findUnique({ where: { slug } })
   if (!article) return { title: 'Artículo no encontrado' }
-  return { title: `${article.title} — AC SED` }
+
+  const description = buildArticleDescription(article.content)
+  const url = `${siteUrl}/news/${slug}`
+  const image = article.imageUrl ?? `${siteUrl}/ACSED.webp`
+
+  return {
+    title: article.title,
+    description,
+    alternates: { canonical: url },
+    openGraph: {
+      type: 'article',
+      url,
+      title: article.title,
+      description,
+      siteName: 'AC SED',
+      locale: 'es_CL',
+      publishedTime: article.generatedAt.toISOString(),
+      images: [image],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: article.title,
+      description,
+      images: [image],
+    },
+  }
 }
 
 export default async function NewsDetailPage({ params }: Props) {
@@ -70,8 +109,30 @@ export default async function NewsDetailPage({ params }: Props) {
     year: 'numeric',
   })
 
+  const articleUrl = `${siteUrl}/news/${slug}`
+  const articleImage = article.imageUrl ?? `${siteUrl}/ACSED.webp`
+  const newsArticleJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'NewsArticle',
+    headline: article.title,
+    image: [articleImage],
+    datePublished: article.generatedAt.toISOString(),
+    dateModified: article.generatedAt.toISOString(),
+    mainEntityOfPage: { '@type': 'WebPage', '@id': articleUrl },
+    author: { '@type': 'Organization', name: 'Club Atlético SED', url: siteUrl },
+    publisher: {
+      '@type': 'Organization',
+      name: 'Club Atlético SED',
+      logo: { '@type': 'ImageObject', url: `${siteUrl}/ACSED.webp` },
+    },
+  }
+
   return (
     <div className="max-w-3xl mx-auto px-4 py-10">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(newsArticleJsonLd) }}
+      />
       <Link href="/news" className="text-wheat text-sm hover:underline mb-6 inline-block">
         ← Volver a noticias
       </Link>

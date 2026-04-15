@@ -4,7 +4,22 @@ import { NewsletterSignup } from '@/components/newsletter-signup'
 import Link from 'next/link'
 import type { Metadata } from 'next'
 
-export const metadata: Metadata = { title: 'Noticias — AC SED' }
+export const metadata: Metadata = {
+  title: 'Noticias',
+  description: 'Noticias, crónicas y resúmenes de los partidos de AC SED en Liga B Chile.',
+  alternates: { canonical: '/news' },
+  openGraph: {
+    title: 'Noticias — AC SED',
+    description: 'Noticias, crónicas y resúmenes de los partidos de AC SED en Liga B Chile.',
+    url: '/news',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Noticias — AC SED',
+    description: 'Noticias, crónicas y resúmenes de los partidos de AC SED en Liga B Chile.',
+  },
+}
 export const revalidate = 60
 
 interface PhaseGroup {
