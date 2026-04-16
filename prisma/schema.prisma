@@ -86,9 +86,10 @@ model Match {
   roundName     String?
   leagueMatchId String?       @unique
   scrapedAt     DateTime      @default(now())
-  news          NewsArticle[]
-  goals         MatchGoal[]
-  cards         MatchCard[]
+  news           NewsArticle[]
+  instagramPosts InstagramPost[]
+  goals          MatchGoal[]
+  cards          MatchCard[]
 
   // Relations
   tournament    Tournament?   @relation(fields: [tournamentId], references: [id])
@@ -282,4 +283,44 @@ model MatchCard {
   @@index([matchId])
   @@index([leaguePlayerId])
   @@index([rosterPlayerId])
+}
+
+model InstagramBackground {
+  id        Int      @id @default(autoincrement())
+  name      String
+  imageUrl  String
+  createdAt DateTime @default(now())
+}
+
+model InstagramPost {
+  id           Int                  @id @default(autoincrement())
+  caption      String               @db.Text
+  postType     String               @default("result") // result | promo | custom
+  matchId      Int?
+  igMediaId    String?              @unique
+  status       String               @default("draft") // draft | publishing | published | failed
+  errorMessage String?
+  publishedAt  DateTime?
+  aiProvider   String?
+  generatedAt  DateTime             @default(now())
+
+  // Relations
+  match        Match?               @relation(fields: [matchId], references: [id], onDelete: SetNull)
+  images       InstagramPostImage[]
+
+  @@index([matchId])
+  @@index([status])
+}
+
+model InstagramPostImage {
+  id            Int           @id @default(autoincrement())
+  postId        Int
+  imageUrl      String        // Final composed image URL on S3 (JPEG)
+  backgroundUrl String?       // Original background (template or custom upload)
+  orderIndex    Int           @default(0)
+
+  // Relations
+  post          InstagramPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
 }

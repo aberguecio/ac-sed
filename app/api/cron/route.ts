@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { runScraper } from '@/lib/scraper'
-import { generateMatchNews } from '@/lib/ai'
+import { generateMatchNews, generateInstagramCaption } from '@/lib/ai'
 import { prisma } from '@/lib/db'
 import slugify from 'slugify'
 
@@ -41,6 +41,22 @@ export async function GET(req: NextRequest) {
         })
       } catch (err) {
         console.error('Cron: error generating news for match', match.id, err)
+      }
+
+      // Generate Instagram post draft (caption only, images on-demand)
+      try {
+        const caption = await generateInstagramCaption(matchWithTeams, 'result')
+        await prisma.instagramPost.create({
+          data: {
+            caption,
+            postType: 'result',
+            matchId: match.id,
+            aiProvider: process.env.AI_PROVIDER ?? 'openai',
+            status: 'draft',
+          },
+        })
+      } catch (err) {
+        console.error('Cron: error generating IG post for match', match.id, err)
       }
     }
 

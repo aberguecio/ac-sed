@@ -1,5 +1,7 @@
 # AC SED - Claude Context
 
+Never run any npx prisma commands or npm commands locally — everything runs inside Docker via compose. Focus only on writing the code files.
+
 ## Reference Documentation
 
 ### Liga B API

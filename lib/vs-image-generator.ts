@@ -5,7 +5,7 @@ import { promises as fs } from 'fs'
 const LOGO_BASE_URL = 'https://liga-b.nyc3.digitaloceanspaces.com/team'
 
 // Helper to build full logo URL
-function getLogoUrl(teamId: number, logoUuid: string, size?: '28x28' | '48x48' | '50x50' | '80x80'): string {
+export function getLogoUrl(teamId: number, logoUuid: string, size?: '28x28' | '48x48' | '50x50' | '80x80'): string {
   // If no size specified, return the original image (1024x1024)
   if (!size) {
     return `${LOGO_BASE_URL}/${teamId}/${logoUuid}`
@@ -13,14 +13,14 @@ function getLogoUrl(teamId: number, logoUuid: string, size?: '28x28' | '48x48' |
   return `${LOGO_BASE_URL}/${teamId}/${size}_${logoUuid}`
 }
 
-interface TeamInfo {
+export interface TeamInfo {
   id: number
   name: string
   logoUrl: string | null
   score?: number | null
 }
 
-async function fetchImageAsBuffer(url: string): Promise<Buffer | null> {
+export async function fetchImageAsBuffer(url: string): Promise<Buffer | null> {
   try {
     const response = await fetch(url)
     if (!response.ok) return null
@@ -32,7 +32,7 @@ async function fetchImageAsBuffer(url: string): Promise<Buffer | null> {
   }
 }
 
-async function getTeamLogo(team: TeamInfo): Promise<Buffer | null> {
+export async function getTeamLogo(team: TeamInfo): Promise<Buffer | null> {
   // For AC SED, try to use local transparent logo first
   if (team.name.includes('AC Sed') || team.name.includes('AC SED')) {
     try {
@@ -60,7 +60,7 @@ async function getTeamLogo(team: TeamInfo): Promise<Buffer | null> {
   return null
 }
 
-function createPlaceholderLogo(teamName: string): Promise<Buffer> {
+export function createPlaceholderLogo(teamName: string): Promise<Buffer> {
   const initials = teamName
     .split(' ')
     .map(word => word[0])

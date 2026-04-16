@@ -549,3 +549,109 @@ Responde ÚNICAMENTE en este formato JSON (sin markdown):
     }
   }
 }
+
+export async function generateInstagramCaption(
+  match: Match & { homeTeam: { name: string } | null; awayTeam: { name: string } | null },
+  postType: 'result' | 'promo' | 'custom' = 'result'
+): Promise<string> {
+  const homeTeamName = match.homeTeam?.name ?? 'TBD'
+  const awayTeamName = match.awayTeam?.name ?? 'TBD'
+  const isHome = isACSED(homeTeamName)
+  const rival = isHome ? awayTeamName : homeTeamName
+  const acsedScore = isHome ? match.homeScore : match.awayScore
+  const rivalScore = isHome ? match.awayScore : match.homeScore
+
+  const context = await getMatchContext(match)
+  const { goals, standingsRows } = context
+
+  // Look up published news article for the match
+  const newsArticle = match.id
+    ? await prisma.newsArticle.findFirst({
+        where: { matchId: match.id, published: true },
+        select: { slug: true },
+      })
+    : null
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://acsed.cl'
+  const newsLink = newsArticle ? `${siteUrl}/news/${newsArticle.slug}` : null
+
+  const igSystemPrompt = `Eres el community manager de Instagram del club AC SED (@ac.sed_2023). Es un club de fútbol amateur con onda cervecera, de ahí su nombre AC Sed.`
+
+  const igRules = `- Usa emojis (futbol, cerveza, fuego, trofeo, etc.)
+- Incluye hashtags al final: #ACSED #HaceSed @ligaboficial
+- Mantén un tono cercano, de hincha, con humor cervecero si encaja
+- Separa párrafos con saltos de línea para mejor legibilidad
+- NO uses **, -, ni ; en el texto
+- NO uses formato JSON, responde solo el caption como texto plano`
+
+  if (postType === 'promo') {
+    const dateStr = match.date.toLocaleDateString('es-CL', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+    })
+    const timeStr = match.date.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })
+
+    const prompt = `${igSystemPrompt}
+
+Escribe un caption CORTO para Instagram anunciando el próximo partido:
+Rival: ${rival}
+Fecha: ${dateStr}
+Hora: ${timeStr}
+Cancha: ${match.venue ?? 'Por confirmar'}
+AC SED juega de ${isHome ? 'local' : 'visitante'}
+
+Reglas:
+- Máximo 100 palabras
+- Tono: hype, de hincha, con humor cervecero si encaja
+${igRules}`
+
+    const { text } = await generateText({ model: getModel(), prompt, maxTokens: 300 })
+    return text.trim()
+  }
+
+  if (postType === 'custom') {
+    return ''
+  }
+
+  // postType === 'result'
+  const result =
+    acsedScore !== null && rivalScore !== null
+      ? acsedScore > rivalScore ? 'VICTORIA' : acsedScore < rivalScore ? 'DERROTA' : 'EMPATE'
+      : 'RESULTADO'
+
+  const acsedGoals = goals.filter(g => isACSED(g.teamName))
+  const scorersStr = acsedGoals.length > 0
+    ? acsedGoals.map(g => `${g.scrapedPlayer.firstName} ${g.minute ? `(${g.minute}')` : ''}`).join(', ')
+    : ''
+
+  const acsedStanding = standingsRows.find(s => isACSED(s.teamName))
+  const standingStr = acsedStanding
+    ? `Posición: ${acsedStanding.position}° con ${acsedStanding.points} pts`
+    : ''
+
+  const tone = acsedScore !== null && rivalScore !== null && acsedScore > rivalScore
+    ? 'celebratorio, eufórico'
+    : acsedScore !== null && rivalScore !== null && acsedScore < rivalScore
+      ? 'reflexivo pero guerrero, no derrotista'
+      : 'positivo, rescatando lo bueno'
+
+  const prompt = `${igSystemPrompt}
+
+Escribe un caption para Instagram sobre el resultado del partido:
+Resultado: ${result}
+AC SED ${acsedScore ?? '?'} vs ${rivalScore ?? '?'} ${rival}
+AC SED jugó de ${isHome ? 'local' : 'visitante'}
+${scorersStr ? `Goleadores: ${scorersStr}` : ''}
+${standingStr ? standingStr : ''}
+${newsLink ? `Link a la crónica del partido: ${newsLink}` : ''}
+
+Reglas:
+- Máximo 150 palabras
+- Tono: ${tone}
+- Menciona goleadores por nombre de pila si los hay
+${newsLink ? '- Incluye el link a la crónica al final del caption, antes de los hashtags, con un texto como "Lee la crónica completa en:" o similar' : ''}
+${igRules}`
+
+  const { text } = await generateText({ model: getModel(), prompt, maxTokens: 400 })
+  return text.trim()
+}

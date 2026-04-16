@@ -22,12 +22,15 @@ export async function POST(req: NextRequest) {
   }
 
   const playerId = formData.get('playerId') as string | null
+  const instagramPostId = formData.get('instagramPostId') as string | null
 
   const buffer = Buffer.from(await file.arrayBuffer())
   const ext = file.type.split('/')[1]
   const timestamp = Date.now()
   let prefix: string
-  if (playerId) {
+  if (instagramPostId) {
+    prefix = `instagram/${instagramPostId}`
+  } else if (playerId) {
     prefix = `players/${playerId}`
   } else if (articleId) {
     prefix = `news/${articleId}`
