@@ -86,9 +86,25 @@ export async function createCarouselContainer(
   return data.id as string
 }
 
-// --- Publish ---
+// --- Status check & Publish ---
+
+async function waitForContainer(containerId: string, maxAttempts = 30): Promise<void> {
+  for (let i = 0; i < maxAttempts; i++) {
+    const data = await igFetch(
+      `/${containerId}?fields=status_code,status&access_token=${getToken()}`
+    )
+    if (data.status_code === 'FINISHED') return
+    if (data.status_code === 'ERROR') {
+      throw new Error(`Instagram container failed: ${data.status ?? 'unknown error'}`)
+    }
+    // IN_PROGRESS — wait 2 seconds before retrying
+    await new Promise(r => setTimeout(r, 2000))
+  }
+  throw new Error('Instagram container processing timed out after 60s')
+}
 
 export async function publishMedia(creationId: string): Promise<string> {
+  await waitForContainer(creationId)
   const params = new URLSearchParams({
     creation_id: creationId,
     access_token: getToken(),
