@@ -564,16 +564,6 @@ export async function generateInstagramCaption(
   const context = await getMatchContext(match)
   const { goals, standingsRows } = context
 
-  // Look up published news article for the match
-  const newsArticle = match.id
-    ? await prisma.newsArticle.findFirst({
-        where: { matchId: match.id, published: true },
-        select: { slug: true },
-      })
-    : null
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://acsed.cl'
-  const newsLink = newsArticle ? `${siteUrl}/news/${newsArticle.slug}` : null
-
   const igSystemPrompt = `Eres el community manager de Instagram del club AC SED (@ac.sed_2023). Es un club de fútbol amateur con onda cervecera, de ahí su nombre AC Sed.`
 
   const igRules = `- Usa emojis (futbol, cerveza, fuego, trofeo, etc.)
@@ -643,13 +633,12 @@ AC SED ${acsedScore ?? '?'} vs ${rivalScore ?? '?'} ${rival}
 AC SED jugó de ${isHome ? 'local' : 'visitante'}
 ${scorersStr ? `Goleadores: ${scorersStr}` : ''}
 ${standingStr ? standingStr : ''}
-${newsLink ? `Link a la crónica del partido: ${newsLink}` : ''}
 
 Reglas:
 - Máximo 150 palabras
 - Tono: ${tone}
 - Menciona goleadores por nombre de pila si los hay
-${newsLink ? '- Incluye el link a la crónica al final del caption, antes de los hashtags, con un texto como "Lee la crónica completa en:" o similar' : ''}
+- Antes de los hashtags, agrega una línea que diga algo como "El relato completo lo encuentras en acsed.cl" (varía la frase pero siempre menciona acsed.cl)
 ${igRules}`
 
   const { text } = await generateText({ model: getModel(), prompt, maxTokens: 400 })
