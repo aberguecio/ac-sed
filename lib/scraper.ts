@@ -1,4 +1,5 @@
 import { prisma } from './db'
+import { syncPlayerMatchEventsForMatch } from './player-match-sync'
 import type { Match } from '@prisma/client'
 
 const ACSED_TEAM_ID = 2836 // AC SED team ID
@@ -182,6 +183,11 @@ async function saveMatchEvents(matchId: number, leagueMatchId: number) {
     }
 
     console.log(`  ✓ Saved events for match ${leagueMatchId}`)
+
+    // Sincronizar agregados a PlayerMatch (write-once para attendance/rating/notes).
+    // NO hacer deleteMany+recreate de PlayerMatch como con goals/cards:
+    // PlayerMatch guarda data manual (asistencia, rating, notas) que no debe perderse.
+    await syncPlayerMatchEventsForMatch(matchId)
   } catch (err) {
     console.error(`Error saving events for match ${leagueMatchId}:`, err)
   }

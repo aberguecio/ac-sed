@@ -12,6 +12,7 @@ const links = [
   { href: '/admin/instagram', label: 'Instagram', icon: '📸' },
   { href: '/admin/subscribers', label: 'Suscriptores', icon: '✉️' },
   { href: '/admin/players', label: 'Jugadores', icon: '⚽' },
+  { href: '/admin/matches', label: 'Asistencia', icon: '✅' },
   { href: '/admin/settings', label: 'Configuración', icon: '⚙️' },
 ]
 

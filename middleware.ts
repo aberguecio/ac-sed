@@ -8,6 +8,7 @@ export default auth((req) => {
     (pathname.startsWith('/api/scrape') && req.method === 'POST') ||
     (pathname.startsWith('/api/news') && req.method !== 'GET') ||
     (pathname.startsWith('/api/players') && req.method !== 'GET') ||
+    pathname.startsWith('/api/admin') ||
     pathname.startsWith('/api/upload') ||
     pathname.startsWith('/api/subscribers')
 
@@ -24,5 +25,5 @@ export default auth((req) => {
 })
 
 export const config = {
-  matcher: ['/admin/:path*', '/api/scrape/:path*', '/api/news/:path*', '/api/players/:path*', '/api/upload', '/api/subscribers/:path*'],
+  matcher: ['/admin/:path*', '/api/scrape/:path*', '/api/news/:path*', '/api/players/:path*', '/api/admin/:path*', '/api/upload', '/api/subscribers/:path*'],
 }

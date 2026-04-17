@@ -7,6 +7,19 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum AttendanceStatus {
+  PENDING
+  CONFIRMED
+  DECLINED
+  LATE
+  NO_SHOW
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
 model Tournament {
   id        Int      @id // Liga B API tournament ID
   name      String
@@ -90,6 +103,8 @@ model Match {
   instagramPosts InstagramPost[]
   goals          MatchGoal[]
   cards          MatchCard[]
+  playerMatches  PlayerMatch[]
+  whatsappMessages WhatsappMessage[]
 
   // Relations
   tournament    Tournament?   @relation(fields: [tournamentId], references: [id])
@@ -163,8 +178,14 @@ model Player {
   statFisico       Int?
   // Link to scraped player data
   leaguePlayerId   Int?           @unique // ID from Liga B API
+  // Contactabilidad (WhatsApp) - teléfono normalizado a 569XXXXXXXX
+  phoneNumber      String?        @unique
+  // Apodos / sobrenombres para personalización de posts, noticias, mensajes IA
+  nicknames        String[]       @default([])
   goals            MatchGoal[]
   cards            MatchCard[]
+  playerMatches    PlayerMatch[]
+  whatsappMessages WhatsappMessage[]
 }
 
 // Scraped player from Liga B API (not our roster)
@@ -323,4 +344,48 @@ model InstagramPostImage {
   post          InstagramPost @relation(fields: [postId], references: [id], onDelete: Cascade)
 
   @@index([postId])
+}
+
+// Relación partido-jugador: asistencia + rendimiento agregado por partido.
+// Convive con MatchGoal/MatchCard (eventos atómicos por minuto) sin reemplazarlos.
+model PlayerMatch {
+  id               Int              @id @default(autoincrement())
+  playerId         Int
+  matchId          Int
+  attendanceStatus AttendanceStatus @default(PENDING)
+  rating           Int?             // 1-10 (validado en API)
+  // Performance agregado del partido
+  goals            Int              @default(0)
+  yellowCards      Int              @default(0) // 0, 1, o 2
+  redCard          Boolean          @default(false) // true si expulsado (directa o doble amarilla)
+  notes            String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  // Restrict en Player: preserva asistencia histórica; Player se soft-deletea vía active:false.
+  player           Player           @relation(fields: [playerId], references: [id], onDelete: Restrict)
+  match            Match            @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@unique([playerId, matchId])
+  @@index([matchId])
+  @@index([playerId])
+  @@index([attendanceStatus])
+}
+
+// Bitácora de mensajes WhatsApp (enviados/recibidos) por jugador.
+model WhatsappMessage {
+  id         Int              @id @default(autoincrement())
+  playerId   Int
+  matchId    Int?
+  direction  MessageDirection
+  content    String           @db.Text
+  timestamp  DateTime         // Tiempo del proveedor/envío (fallback: now() en ingest)
+  createdAt  DateTime         @default(now()) // Tiempo de ingesta en el servidor
+
+  player     Player           @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  match      Match?           @relation(fields: [matchId], references: [id], onDelete: SetNull)
+
+  @@index([playerId])
+  @@index([matchId])
+  @@index([timestamp])
 }
