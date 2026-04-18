@@ -9,17 +9,22 @@ export function getModel() {
   const apiKey = process.env.AI_API_KEY
   const baseURL = process.env.AI_BASE_URL
 
+  // structuredOutputs:false disables OpenAI strict mode for both tool schemas
+  // and JSON response_format. Required because our tools use .optional() params,
+  // which strict mode rejects (it demands every property appear in `required`).
+  const settings = { structuredOutputs: false } as const
+
   // Custom endpoint (LiteLLM, vLLM, LocalAI, etc.)
   if (baseURL) {
     const customProvider = createOpenAI({
       baseURL,
       apiKey: apiKey ?? 'dummy-key',
     })
-    return customProvider(model)
+    return customProvider(model, settings)
   }
 
   // Default OpenAI
-  return openai(model)
+  return openai(model, settings)
 }
 
 // Export this function to reuse in other parts of the app
