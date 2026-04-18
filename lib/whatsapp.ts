@@ -35,6 +35,7 @@ export interface WhatsappProvider {
     options: readonly string[],
     typingMs: number
   ): Promise<{ id: string }>
+  sendText(to: string, body: string, typingMs?: number): Promise<{ id: string }>
   parsePollVote(req: Request): Promise<ParsedPollVote | null>
   verifySignature(req: Request): boolean
 }
@@ -138,6 +139,29 @@ class EvolutionProvider implements WhatsappProvider {
     const key = body?.key as Record<string, unknown> | undefined
     const id = (key?.id ?? body?.messageId ?? body?.id) as string | undefined
     if (!id) throw new Error('Evolution sendPoll: no message id in response')
+    return { id }
+  }
+
+  async sendText(to: string, body: string, typingMs?: number): Promise<{ id: string }> {
+    const url = `${this.baseUrl}/message/sendText/${encodeURIComponent(this.instance)}`
+    const payload: Record<string, unknown> = { number: to, text: body }
+    if (typingMs && typingMs > 0) payload.delay = typingMs
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: this.apiKey,
+      },
+      body: JSON.stringify(payload),
+    })
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      throw new Error(`Evolution sendText ${res.status}: ${text.slice(0, 300)}`)
+    }
+    const resp = (await res.json()) as Record<string, unknown>
+    const key = resp?.key as Record<string, unknown> | undefined
+    const id = (key?.id ?? resp?.messageId ?? resp?.id) as string | undefined
+    if (!id) throw new Error('Evolution sendText: no message id in response')
     return { id }
   }
 
@@ -268,4 +292,90 @@ export async function resolvePollVote(
 
 export function normalizeInboundPhone(raw: string): string | null {
   return normalizeChileanPhone(raw)
+}
+
+type SummaryRow = {
+  status: AttendanceVote
+  number: number | null
+  display: string
+}
+
+function pickDisplayName(name: string, nicknames: string[]): string {
+  return nicknames[0] ?? name.split(' ')[0] ?? name
+}
+
+function sortForSummary(a: SummaryRow, b: SummaryRow): number {
+  const order: Record<AttendanceVote, number> = {
+    CONFIRMED: 0, LATE: 1, VISITING: 2, DECLINED: 3,
+  }
+  if (order[a.status] !== order[b.status]) return order[a.status] - order[b.status]
+  const na = a.number ?? 9999
+  const nb = b.number ?? 9999
+  if (na !== nb) return na - nb
+  return a.display.localeCompare(b.display, 'es')
+}
+
+export function buildGroupSummaryMessage(
+  rivalName: string,
+  when: Date,
+  venue: string | null,
+  rows: SummaryRow[]
+): string {
+  const header = `Partido vs ${rivalName} - ${formatMatchWhen(when)}`
+  const venueLine = venue ? `\nCancha: ${venue}` : ''
+  if (rows.length === 0) {
+    return `${header}${venueLine}\n\nAún no hay asistentes confirmados.`
+  }
+  const sorted = [...rows].sort(sortForSummary)
+  const lines = sorted.map((r, i) => {
+    const suffix =
+      r.status === 'LATE' ? ' (llega tarde)' :
+      r.status === 'VISITING' ? ' (de visita)' : ''
+    return `${i + 1}. ${r.display}${suffix}`
+  })
+  return `${header}${venueLine}\n\nAsistentes (${sorted.length}):\n${lines.join('\n')}`
+}
+
+export async function sendAttendanceSummaryToGroup(
+  matchId: number
+): Promise<{ ok: true; providerMessageId: string; body: string } | { ok: false; reason: string }> {
+  const groupJid = process.env.WHATSAPP_ATTENDANCE_GROUP_JID
+  if (!groupJid) return { ok: false, reason: 'no group jid' }
+
+  const match = await prisma.match.findUnique({
+    where: { id: matchId },
+    include: {
+      homeTeam: true,
+      awayTeam: true,
+      playerMatches: {
+        where: { attendanceStatus: { in: ['CONFIRMED', 'LATE', 'VISITING'] } },
+        select: {
+          attendanceStatus: true,
+          player: { select: { name: true, nicknames: true, number: true } },
+        },
+      },
+    },
+  })
+  if (!match) return { ok: false, reason: 'match not found' }
+
+  const rival = isACSED(match.homeTeam?.name) ? match.awayTeam : match.homeTeam
+  const rivalName = rival?.name ?? 'rival'
+
+  const rows: SummaryRow[] = match.playerMatches.map(pm => ({
+    status: pm.attendanceStatus as AttendanceVote,
+    number: pm.player.number,
+    display: pickDisplayName(pm.player.name, pm.player.nicknames),
+  }))
+
+  const body = buildGroupSummaryMessage(rivalName, match.date, match.venue, rows)
+
+  const provider = getWhatsappProvider()
+  const typingMs = 3000 + Math.floor(Math.random() * 2001) // 3000–5000ms
+  try {
+    const { id } = await provider.sendText(groupJid, body, typingMs)
+    return { ok: true, providerMessageId: id, body }
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err)
+    return { ok: false, reason }
+  }
 }

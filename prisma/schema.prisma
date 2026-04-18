@@ -101,6 +101,10 @@ model Match {
   roundName     String?
   leagueMatchId String?       @unique
   scrapedAt     DateTime      @default(now())
+  // Debounce para el resumen de asistencia al grupo de WhatsApp. Se setea a
+  // `now + 5min` en cada voto de encuesta (partidos futuros) y se limpia tras
+  // enviar. Persistido para sobrevivir reinicios vía instrumentation.ts.
+  notifyGroupAt DateTime?
   news           NewsArticle[]
   instagramPosts InstagramPost[]
   goals          MatchGoal[]

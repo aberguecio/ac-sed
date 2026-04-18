@@ -6,6 +6,9 @@ import {
   normalizeInboundPhone,
   resolvePollVote,
 } from '@/lib/whatsapp'
+import { scheduleGroupSummary } from '@/lib/attendance-notifier'
+
+const GROUP_SUMMARY_DELAY_MS = 5 * 60 * 1000
 
 export async function GET() {
   return NextResponse.json({ ok: true })
@@ -61,7 +64,7 @@ export async function POST(req: Request) {
 
   const { playerId, matchId } = resolved
 
-  await prisma.$transaction(async tx => {
+  const scheduleSummary = await prisma.$transaction(async tx => {
     await tx.whatsappMessage.create({
       data: {
         playerId,
@@ -72,13 +75,29 @@ export async function POST(req: Request) {
         timestamp: vote.timestamp,
       },
     })
-    if (matchId != null) {
-      await tx.playerMatch.update({
-        where: { playerId_matchId: { playerId, matchId } },
-        data: { attendanceStatus: status },
-      })
-    }
+    if (matchId == null) return false
+
+    await tx.playerMatch.update({
+      where: { playerId_matchId: { playerId, matchId } },
+      data: { attendanceStatus: status },
+    })
+
+    const match = await tx.match.findUnique({
+      where: { id: matchId },
+      select: { date: true },
+    })
+    if (!match || match.date <= new Date()) return false
+
+    await tx.match.update({
+      where: { id: matchId },
+      data: { notifyGroupAt: new Date(Date.now() + GROUP_SUMMARY_DELAY_MS) },
+    })
+    return true
   })
+
+  if (scheduleSummary && matchId != null) {
+    scheduleGroupSummary(matchId, GROUP_SUMMARY_DELAY_MS)
+  }
 
   return NextResponse.json({ ok: true })
 }
