@@ -12,6 +12,7 @@ enum AttendanceStatus {
   CONFIRMED
   DECLINED
   LATE
+  VISITING
   NO_SHOW
 }
 
@@ -377,13 +378,17 @@ model PlayerMatch {
 
 // Bitácora de mensajes WhatsApp (enviados/recibidos) por jugador.
 model WhatsappMessage {
-  id         Int              @id @default(autoincrement())
-  playerId   Int
-  matchId    Int?
-  direction  MessageDirection
-  content    String           @db.Text
-  timestamp  DateTime         // Tiempo del proveedor/envío (fallback: now() en ingest)
-  createdAt  DateTime         @default(now()) // Tiempo de ingesta en el servidor
+  id                  Int              @id @default(autoincrement())
+  playerId            Int
+  matchId             Int?
+  direction           MessageDirection
+  content             String           @db.Text
+  // Id de mensaje/evento del proveedor (Evolution). OUTBOUND: id del poll enviado;
+  // INBOUND: id del evento de voto (único por cambio de voto). Habilita idempotencia
+  // de webhook y permite mapear un voto entrante al poll original.
+  providerMessageId   String?          @unique
+  timestamp           DateTime         // Tiempo del proveedor/envío (fallback: now() en ingest)
+  createdAt           DateTime         @default(now()) // Tiempo de ingesta en el servidor
 
   player     Player           @relation(fields: [playerId], references: [id], onDelete: Cascade)
   match      Match?           @relation(fields: [matchId], references: [id], onDelete: SetNull)

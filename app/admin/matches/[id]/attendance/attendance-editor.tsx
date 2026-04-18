@@ -43,6 +43,7 @@ const STATUSES: { value: AttendanceStatus; label: string; badgeClass: string }[]
   { value: 'CONFIRMED', label: 'Confirmado', badgeClass: 'bg-green-100 text-green-700 border-green-200' },
   { value: 'DECLINED', label: 'No va', badgeClass: 'bg-red-100 text-red-700 border-red-200' },
   { value: 'LATE', label: 'Tarde', badgeClass: 'bg-yellow-100 text-yellow-800 border-yellow-200' },
+  { value: 'VISITING', label: 'De visita', badgeClass: 'bg-teal-100 text-teal-700 border-teal-200' },
   { value: 'NO_SHOW', label: 'No show', badgeClass: 'bg-orange-100 text-orange-700 border-orange-200' },
 ]
 
@@ -66,14 +67,29 @@ export function AttendanceEditor({ matchId, initialRows, initialized }: Props) {
   const timeouts = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map())
   const [initializing, startInit] = useTransition()
   const [syncing, startSync] = useTransition()
+  const [broadcasting, startBroadcast] = useTransition()
 
   const counters = useMemo(() => {
-    const c = { PENDING: 0, CONFIRMED: 0, DECLINED: 0, LATE: 0, NO_SHOW: 0 }
+    const c: Record<AttendanceStatus, number> = {
+      PENDING: 0,
+      CONFIRMED: 0,
+      DECLINED: 0,
+      LATE: 0,
+      VISITING: 0,
+      NO_SHOW: 0,
+    }
     for (const r of rows) {
       const s = r.playerMatch?.attendanceStatus ?? 'PENDING'
       c[s] += 1
     }
     return c
+  }, [rows])
+
+  const pendingWithPhone = useMemo(() => {
+    return rows.filter((r: Row) => {
+      const s = r.playerMatch?.attendanceStatus ?? 'PENDING'
+      return s === 'PENDING' && !!r.player.phoneNumber
+    }).length
   }, [rows])
 
   async function handleInit() {
@@ -96,6 +112,42 @@ export function AttendanceEditor({ matchId, initialRows, initialized }: Props) {
         alert('Error al sincronizar eventos')
         return
       }
+      router.refresh()
+    })
+  }
+
+  async function handleBroadcast() {
+    if (pendingWithPhone === 0) {
+      alert('No hay jugadores pendientes con WhatsApp registrado.')
+      return
+    }
+    const confirmed = confirm(
+      `Se enviará una encuesta por WhatsApp a ${pendingWithPhone} jugador(es) pendiente(s). ` +
+        `El envío toma unos segundos por jugador (delay aleatorio 3–10s para que se sienta humano). ¿Continuar?`
+    )
+    if (!confirmed) return
+
+    startBroadcast(async () => {
+      const res = await fetch(`/api/admin/matches/${matchId}/attendance/broadcast`, {
+        method: 'POST',
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        alert(`Error al enviar: ${err.error ?? res.status}`)
+        return
+      }
+      const data = await res.json() as {
+        sent: number
+        skipped: number
+        failed: Array<{ playerId: number; reason: string }>
+        total: number
+      }
+      const failSummary = data.failed.length
+        ? `\nFallidos: ${data.failed.length} (${data.failed.map(f => `#${f.playerId}: ${f.reason}`).join('; ')})`
+        : ''
+      alert(
+        `Encuestas enviadas: ${data.sent} / ${data.total}. Saltados: ${data.skipped}.${failSummary}`
+      )
       router.refresh()
     })
   }
@@ -239,13 +291,23 @@ export function AttendanceEditor({ matchId, initialRows, initialized }: Props) {
             </span>
           ))}
         </div>
-        <button
-          onClick={handleSync}
-          disabled={syncing}
-          className="text-xs px-3 py-1.5 rounded border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
-        >
-          {syncing ? 'Sincronizando…' : 'Sincronizar con Liga B'}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={handleBroadcast}
+            disabled={broadcasting || pendingWithPhone === 0}
+            title={pendingWithPhone === 0 ? 'No hay pendientes con WhatsApp' : `${pendingWithPhone} jugador(es) pendiente(s) con WhatsApp`}
+            className="text-xs px-3 py-1.5 rounded bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
+          >
+            {broadcasting ? 'Enviando…' : `Enviar encuesta WhatsApp (${pendingWithPhone})`}
+          </button>
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            className="text-xs px-3 py-1.5 rounded border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
+          >
+            {syncing ? 'Sincronizando…' : 'Sincronizar con Liga B'}
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">

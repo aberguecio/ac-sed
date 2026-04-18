@@ -13,7 +13,10 @@ export async function GET(req: NextRequest) {
     prisma.player.findMany({
       where: includeInactive ? {} : { active: true },
       orderBy: [{ number: 'asc' }, { name: 'asc' }],
-      select: PUBLIC_PLAYER_SELECT,
+      // `/api/players` está protegido por middleware como admin-only, por eso
+      // exponemos `phoneNumber` aquí sin modificar PUBLIC_PLAYER_SELECT (que se
+      // reusa en rutas públicas como `/app/(site)/players`).
+      select: { ...PUBLIC_PLAYER_SELECT, phoneNumber: true },
     }),
     prisma.playerMatch.groupBy({
       by: ['playerId', 'attendanceStatus'],

@@ -562,14 +562,14 @@ export default function AdminPlayersPage() {
                     <th className="px-4 py-3 text-left text-gray-500 font-medium">Jugador</th>
                     <th className="px-4 py-3 text-left text-gray-500 font-medium">Posición</th>
                     <th className="px-4 py-3 text-left text-gray-500 font-medium">Asistencia</th>
-                    <th className="px-4 py-3 text-left text-gray-500 font-medium">Stats</th>
+                    <th className="px-4 py-3 text-left text-gray-500 font-medium">Número</th>
                     <th className="px-4 py-3 text-left text-gray-500 font-medium">Vinculación</th>
                     <th className="px-4 py-3 text-right text-gray-500 font-medium">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
                   {sortedPlayers.map((p) => {
-                    const hasStats = STAT_KEYS.some(({ key }) => p[key] != null)
+                    const hasPhone = !!p.phoneNumber
                     const attendancePct = p.totalMatches > 0
                       ? Math.round((p.attended / p.totalMatches) * 100)
                       : null
@@ -609,10 +609,15 @@ export default function AdminPlayersPage() {
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          {hasStats ? (
-                            <span className="text-xs text-wheat font-semibold">✦ Con stats</span>
+                          {hasPhone ? (
+                            <span
+                              className="text-xs text-green-600 font-semibold"
+                              title={p.phoneNumber ?? ''}
+                            >
+                              ✓ Guardado
+                            </span>
                           ) : (
-                            <span className="text-xs text-gray-300">Sin stats</span>
+                            <span className="text-xs text-red-500 font-medium">✗ Sin número</span>
                           )}
                         </td>
                         <td className="px-4 py-3">

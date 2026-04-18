@@ -1,8 +1,12 @@
 # WhatsApp Attendance — Integration Guide
 
-Instructions for wiring an external WhatsApp provider (QR-based wrapper, Twilio, Meta Cloud API, etc.) into the attendance feature.
+Instructions for the Evolution API WhatsApp integration used by the attendance feature.
 
-> **Status**: DB schema, admin UI and a stub webhook are merged. The messaging layer is **not** implemented — this doc is the contract for whoever builds it.
+> **Status**: Implemented with Evolution API (self-hosted at `https://evolution.berguecio.cl`).
+> See `lib/whatsapp.ts` for the adapter, `app/api/admin/matches/[id]/attendance/broadcast/route.ts`
+> for outbound, and `app/api/whatsapp/webhook/route.ts` for inbound poll votes.
+> Polls (not free text) are used, so no NLP/classification step is needed — the vote
+> maps directly to `PlayerMatch.attendanceStatus`.
 
 ---
 
@@ -129,17 +133,29 @@ Also add rate limiting (e.g. 60 req/min per sender) to prevent abuse.
 
 ---
 
-## Env vars to add
+## Env vars
 
 ```
-WHATSAPP_PROVIDER=qr
-WHATSAPP_WEBHOOK_SECRET=<random-string>
-WHATSAPP_API_URL=<provider endpoint>
-WHATSAPP_API_TOKEN=<provider token>
-WHATSAPP_GROUP_JID=<group chat id, if using group broadcasts>
+EVOLUTION_API_URL=https://evolution.berguecio.cl
+EVOLUTION_API_KEY=<global apikey from Evolution dashboard>
+EVOLUTION_INSTANCE=acsed
+WHATSAPP_WEBHOOK_SECRET=<random-string sent as X-Integration-Key on every webhook>
 ```
 
-Add them to `.env.example` and document in `docs/running.md`.
+Configure the webhook once on the Evolution instance:
+
+```
+POST {EVOLUTION_API_URL}/webhook/set/{EVOLUTION_INSTANCE}
+apikey: {EVOLUTION_API_KEY}
+Content-Type: application/json
+
+{
+  "url": "https://acsed.cl/api/whatsapp/webhook",
+  "enabled": true,
+  "events": ["MESSAGES_UPSERT"],
+  "headers": { "X-Integration-Key": "<same value as WHATSAPP_WEBHOOK_SECRET>" }
+}
+```
 
 ---
 
