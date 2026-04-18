@@ -17,7 +17,11 @@ Never run any npx prisma commands or npm commands locally — everything runs in
 ### Database
 - ORM: Prisma
 - Always use `npx prisma db push` after schema changes
-- Name fields in English in schema, add Spanish comments when needed
+- Name fields in English in schema; all code comments in English
+
+### Language
+- **Code comments**: English (including Prisma schema, TS/TSX files, config)
+- **AI-generated content**: Spanish — LLM system prompts, bot replies, newsletter copy, Instagram captions, and anything user-facing produced by the model stays in Spanish (AC SED voice)
 
 ### Scraper
 - File: `lib/scraper.ts`

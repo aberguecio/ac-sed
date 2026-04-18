@@ -29,7 +29,12 @@ export interface AnswerGroupQuestionResult {
 export async function answerGroupQuestion(
   question: string
 ): Promise<AnswerGroupQuestionResult> {
-  const { text, toolCalls, finishReason } = await generateText({
+  console.log('[ai-whatsapp-agent] generateText() begin', {
+    questionPreview: question.slice(0, 200),
+    toolCount: Object.keys(whatsappAgentTools).length,
+  })
+  const startedAt = Date.now()
+  const { text, toolCalls, finishReason, usage } = await generateText({
     model: getModel(),
     system: SYSTEM_PROMPT,
     prompt: question,
@@ -38,10 +43,15 @@ export async function answerGroupQuestion(
     maxTokens: 600,
   })
 
-  if (process.env.NODE_ENV === 'development') {
-    console.log('[whatsapp ai] tool calls:', toolCalls?.length ?? 0,
-      toolCalls?.map(t => t.toolName).join(', '))
-  }
+  console.log('[ai-whatsapp-agent] generateText() done', {
+    ms: Date.now() - startedAt,
+    finishReason,
+    toolCallCount: toolCalls?.length ?? 0,
+    toolNames: toolCalls?.map((t: { toolName: string }) => t.toolName) ?? [],
+    usage,
+    textLength: text.length,
+    textPreview: text.slice(0, 200),
+  })
 
   return {
     answer: text.trim(),
