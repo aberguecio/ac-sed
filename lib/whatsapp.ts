@@ -207,23 +207,12 @@ class EvolutionProvider implements WhatsappProvider {
   }
 
   parseIncomingText(payload: unknown): ParsedIncomingText | null {
-    if (!payload || typeof payload !== 'object') {
-      console.log('[parseIncomingText] skip: payload not object')
-      return null
-    }
+    if (!payload || typeof payload !== 'object') return null
     const data = (payload as Record<string, unknown>).data as Record<string, unknown> | undefined
-    if (!data) {
-      console.log('[parseIncomingText] skip: no data field')
-      return null
-    }
+    if (!data) return null
 
     const message = data.message as Record<string, unknown> | undefined
-    if (!message) {
-      console.log('[parseIncomingText] skip: no message field', {
-        dataKeys: Object.keys(data),
-      })
-      return null
-    }
+    if (!message) return null
 
     // Extract text: extendedTextMessage (with mention metadata) or conversation (plain text).
     const ext = message.extendedTextMessage as Record<string, unknown> | undefined
@@ -237,20 +226,12 @@ class EvolutionProvider implements WhatsappProvider {
     } else if (typeof message.conversation === 'string') {
       text = message.conversation
     }
-    if (!text) {
-      console.log('[parseIncomingText] skip: no text payload', {
-        messageKeys: Object.keys(message),
-      })
-      return null
-    }
+    if (!text) return null
 
     const key = data.key as Record<string, unknown> | undefined
     const remoteJid = key?.remoteJid
     const eventId = key?.id
-    if (typeof remoteJid !== 'string' || typeof eventId !== 'string') {
-      console.log('[parseIncomingText] skip: missing key.remoteJid/id', { key })
-      return null
-    }
+    if (typeof remoteJid !== 'string' || typeof eventId !== 'string') return null
 
     const fromMe = key?.fromMe === true
     const isGroup = remoteJid.endsWith('@g.us')

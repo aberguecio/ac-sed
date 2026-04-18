@@ -33,7 +33,10 @@ async function findActiveScope() {
   return { tournament, stage, group: acsedGroup }
 }
 
-async function resolveTeamId(teamId?: number, opponent?: string): Promise<number | null> {
+async function resolveTeamId(
+  teamId?: number | null,
+  opponent?: string | null
+): Promise<number | null> {
   if (teamId) return teamId
   if (opponent) {
     const t = await prisma.team.findFirst({
@@ -78,17 +81,19 @@ export const listMatchesTool = tool({
   description:
     'Lista partidos con filtros flexibles. Útil para "qué partidos hay/hubo". Por defecto: AC SED, próximos. Filtros: status (played|upcoming|any), opponent (nombre rival), teamId, year, from/to (ISO date), tournamentId, limit.',
   parameters: z.object({
-    status: z.enum(['played', 'upcoming', 'any']).optional().default('any'),
-    teamId: z.number().int().optional(),
-    opponent: z.string().optional(),
-    year: z.number().int().optional(),
-    tournamentId: z.number().int().optional(),
-    from: z.string().optional().describe('ISO date inclusive'),
-    to: z.string().optional().describe('ISO date inclusive'),
-    limit: z.number().int().min(1).max(MAX_LIMIT).optional().default(DEFAULT_LIMIT),
-    order: z.enum(['asc', 'desc']).optional().default('asc'),
+    status: z.enum(['played', 'upcoming', 'any']).nullish(),
+    teamId: z.number().int().nullish(),
+    opponent: z.string().nullish(),
+    year: z.number().int().nullish(),
+    tournamentId: z.number().int().nullish(),
+    from: z.string().nullish().describe('ISO date inclusive'),
+    to: z.string().nullish().describe('ISO date inclusive'),
+    limit: z.number().int().min(1).max(MAX_LIMIT).nullish(),
+    order: z.enum(['asc', 'desc']).nullish(),
   }),
   execute: async ({ status, teamId, opponent, year, tournamentId, from, to, limit, order }) => {
+    const effectiveStatus = status ?? 'any'
+
     const where: Record<string, unknown> = {}
     if (tournamentId) where.tournamentId = tournamentId
 
@@ -99,15 +104,15 @@ export const listMatchesTool = tool({
       dateFilter.gte = new Date(Date.UTC(year, 0, 1))
       dateFilter.lte = new Date(Date.UTC(year, 11, 31, 23, 59, 59))
     }
-    if (status === 'played') {
+    if (effectiveStatus === 'played') {
       where.homeScore = { not: null }
       if (!from && !to && !year) dateFilter.lte = new Date()
-    } else if (status === 'upcoming') {
+    } else if (effectiveStatus === 'upcoming') {
       if (!from && !to && !year) dateFilter.gt = new Date()
     }
     if (Object.keys(dateFilter).length) where.date = dateFilter
 
-    const focusTeamId = await resolveTeamId(teamId, opponent)
+    const focusTeamId = await resolveTeamId(teamId ?? undefined, opponent ?? undefined)
     if (focusTeamId) {
       where.OR = [{ homeTeamId: focusTeamId }, { awayTeamId: focusTeamId }]
     }
@@ -119,8 +124,8 @@ export const listMatchesTool = tool({
         awayTeam: { select: { name: true } },
         tournament: { select: { name: true } },
       },
-      orderBy: { date: order },
-      take: limit,
+      orderBy: { date: order ?? 'asc' },
+      take: limit ?? DEFAULT_LIMIT,
     })
 
     return { count: matches.length, matches: matches.map(summarizeMatch) }
@@ -207,8 +212,8 @@ export const getMatchGoalsTool = tool({
 export const getNextMatchTool = tool({
   description: 'Próximo partido (no jugado aún) de AC SED por defecto, o de un equipo dado.',
   parameters: z.object({
-    teamId: z.number().int().optional(),
-    opponent: z.string().optional(),
+    teamId: z.number().int().nullish(),
+    opponent: z.string().nullish(),
   }),
   execute: async ({ teamId, opponent }) => {
     const focus = await resolveTeamId(teamId, opponent)
@@ -232,8 +237,8 @@ export const getNextMatchTool = tool({
 export const getLastPlayedMatchTool = tool({
   description: 'Último partido jugado (con marcador) de AC SED por defecto, o de un equipo dado.',
   parameters: z.object({
-    teamId: z.number().int().optional(),
-    opponent: z.string().optional(),
+    teamId: z.number().int().nullish(),
+    opponent: z.string().nullish(),
   }),
   execute: async ({ teamId, opponent }) => {
     const focus = await resolveTeamId(teamId, opponent)
@@ -285,12 +290,13 @@ export const getTopScorersTool = tool({
   description:
     'Goleadores agregados sumando MatchGoal. Filtros: year, tournamentId, teamName (para limitar a un equipo). Default limit 10.',
   parameters: z.object({
-    year: z.number().int().optional(),
-    tournamentId: z.number().int().optional(),
-    teamName: z.string().optional(),
-    limit: z.number().int().min(1).max(50).optional().default(10),
+    year: z.number().int().nullish(),
+    tournamentId: z.number().int().nullish(),
+    teamName: z.string().nullish(),
+    limit: z.number().int().min(1).max(50).nullish(),
   }),
   execute: async ({ year, tournamentId, teamName, limit }) => {
+    const effectiveLimit = limit ?? 10
     const matchWhere: Record<string, unknown> = { homeScore: { not: null } }
     if (tournamentId) matchWhere.tournamentId = tournamentId
     if (year) {
@@ -322,7 +328,7 @@ export const getTopScorersTool = tool({
     }
     return Array.from(acc.values())
       .sort((a, b) => b.goals - a.goals)
-      .slice(0, limit)
+      .slice(0, effectiveLimit)
   },
 })
 
@@ -331,8 +337,8 @@ export const getPlayerSeasonStatsTool = tool({
     'Estadísticas de un jugador del roster (por id) en un año o torneo: goles, partidos jugados, tarjetas. Buscar el id con searchPlayer si solo tienes el nombre.',
   parameters: z.object({
     playerId: z.number().int(),
-    year: z.number().int().optional(),
-    tournamentId: z.number().int().optional(),
+    year: z.number().int().nullish(),
+    tournamentId: z.number().int().nullish(),
   }),
   execute: async ({ playerId, year, tournamentId }) => {
     const matchWhere: Record<string, unknown> = { homeScore: { not: null } }
@@ -432,7 +438,7 @@ export const getHeadToHeadTool = tool({
 export const getTournamentInfoTool = tool({
   description:
     'Devuelve info del torneo (por defecto el activo): nombre, fases, equipos del grupo de AC SED, reglas hardcodeadas (6 equipos, 5 partidos, 2 ascienden, 2 descienden), partidos jugados/restantes en la fase actual.',
-  parameters: z.object({ tournamentId: z.number().int().optional() }),
+  parameters: z.object({ tournamentId: z.number().int().nullish() }),
   execute: async ({ tournamentId }) => {
     const tournament = tournamentId
       ? await prisma.tournament.findUnique({
@@ -496,9 +502,9 @@ export const getCurrentStandingsTool = tool({
   description:
     'Tabla de posiciones actual del grupo de AC SED (calculada desde los partidos jugados hasta hoy). Si pasas tournamentId/stageId/groupId úsalos; sino, default al grupo activo de AC SED.',
   parameters: z.object({
-    tournamentId: z.number().int().optional(),
-    stageId: z.number().int().optional(),
-    groupId: z.number().int().optional(),
+    tournamentId: z.number().int().nullish(),
+    stageId: z.number().int().nullish(),
+    groupId: z.number().int().nullish(),
   }),
   execute: async ({ tournamentId, stageId, groupId }) => {
     let scope: { tournamentId: number; stageId: number; groupId: number } | null = null
@@ -523,11 +529,11 @@ export const getRemainingFixturesTool = tool({
   description:
     'Lista de partidos pendientes (date > now). Si no se especifica teamId/opponent, devuelve todos los partidos pendientes del grupo activo de AC SED para todos los equipos.',
   parameters: z.object({
-    tournamentId: z.number().int().optional(),
-    stageId: z.number().int().optional(),
-    groupId: z.number().int().optional(),
-    teamId: z.number().int().optional(),
-    opponent: z.string().optional(),
+    tournamentId: z.number().int().nullish(),
+    stageId: z.number().int().nullish(),
+    groupId: z.number().int().nullish(),
+    teamId: z.number().int().nullish(),
+    opponent: z.string().nullish(),
   }),
   execute: async ({ tournamentId, stageId, groupId, teamId, opponent }) => {
     let scopeFilter: Record<string, unknown> = {}
@@ -569,9 +575,9 @@ export const getPromotionProjectionTool = tool({
   description:
     'Para cada equipo del grupo activo de AC SED: puntos actuales, partidos restantes, máximo posible (current + 3*restantes), mínimo posible, y rivales pendientes. Útil para razonar "qué necesitamos para ascender/no descender". Reglas del torneo: 6 equipos, todos contra todos (5 partidos), 2 primeros ascienden, 2 últimos descienden.',
   parameters: z.object({
-    tournamentId: z.number().int().optional(),
-    stageId: z.number().int().optional(),
-    groupId: z.number().int().optional(),
+    tournamentId: z.number().int().nullish(),
+    stageId: z.number().int().nullish(),
+    groupId: z.number().int().nullish(),
   }),
   execute: async ({ tournamentId, stageId, groupId }) => {
     let scope: { tournamentId: number; stageId: number; groupId: number } | null = null
