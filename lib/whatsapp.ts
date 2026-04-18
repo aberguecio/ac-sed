@@ -1,4 +1,3 @@
-import { timingSafeEqual } from 'node:crypto'
 import { prisma } from '@/lib/db'
 import { normalizeChileanPhone } from '@/lib/phone-utils'
 import { isACSED } from '@/lib/team-utils'
@@ -202,10 +201,13 @@ class EvolutionProvider implements WhatsappProvider {
   verifySignature(req: Request): boolean {
     const received = req.headers.get('x-integration-key') ?? ''
     const expected = this.webhookSecret
-    const a = Buffer.from(received)
-    const b = Buffer.from(expected)
-    if (a.length !== b.length) return false
-    return timingSafeEqual(a, b)
+    if (received.length !== expected.length) return false
+    // Constant-time compare para evitar leak de info vía timing.
+    let diff = 0
+    for (let i = 0; i < received.length; i++) {
+      diff |= received.charCodeAt(i) ^ expected.charCodeAt(i)
+    }
+    return diff === 0
   }
 }
 
