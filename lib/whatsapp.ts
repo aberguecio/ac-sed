@@ -218,17 +218,19 @@ export function getWhatsappProvider(): WhatsappProvider {
 }
 
 function formatMatchWhen(when: Date): string {
+  // El scraper guarda la hora local (CLT) como si fuera UTC. Formateamos en UTC
+  // para mostrar la hora tal cual está guardada, sin re-convertir por timezone.
   const day = new Intl.DateTimeFormat('es-CL', {
     weekday: 'long',
     day: '2-digit',
     month: '2-digit',
-    timeZone: 'America/Santiago',
+    timeZone: 'UTC',
   }).format(when)
   const time = new Intl.DateTimeFormat('es-CL', {
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
-    timeZone: 'America/Santiago',
+    timeZone: 'UTC',
   }).format(when)
   return `${day} a las ${time}`
 }
