@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { prisma } from '@/lib/db'
 import { TeamLogo } from '@/components/team-logo'
+import { ACSED_TEAM_ID } from '@/lib/team-utils'
 
 type Tab = 'upcoming' | 'past'
 
@@ -14,15 +15,40 @@ export default async function AdminMatchesPage({ searchParams }: PageProps) {
   const now = new Date()
 
   const matches = await prisma.match.findMany({
-    where: tab === 'past' ? { date: { lt: now } } : { date: { gte: now } },
+    where: {
+      AND: [
+        tab === 'past' ? { date: { lt: now } } : { date: { gte: now } },
+        { OR: [{ homeTeamId: ACSED_TEAM_ID }, { awayTeamId: ACSED_TEAM_ID }] },
+      ],
+    },
     orderBy: { date: tab === 'past' ? 'desc' : 'asc' },
     include: { homeTeam: true, awayTeam: true, stage: true },
     take: 100,
   })
 
+  // Asistencia por partido: attended = CONFIRMED + LATE; initialized = cualquier fila PlayerMatch.
+  const matchIds = matches.map(m => m.id)
+  const attendance = matchIds.length
+    ? await prisma.playerMatch.groupBy({
+        by: ['matchId', 'attendanceStatus'],
+        where: { matchId: { in: matchIds } },
+        _count: { _all: true },
+      })
+    : []
+
+  const attendanceByMatch = new Map<number, { attended: number; total: number }>()
+  for (const row of attendance) {
+    const s = attendanceByMatch.get(row.matchId) ?? { attended: 0, total: 0 }
+    s.total += row._count._all
+    if (row.attendanceStatus === 'CONFIRMED' || row.attendanceStatus === 'LATE') {
+      s.attended += row._count._all
+    }
+    attendanceByMatch.set(row.matchId, s)
+  }
+
   return (
     <div className="p-8">
-      <h1 className="text-2xl font-extrabold text-navy mb-6">Asistencia — Partidos</h1>
+      <h1 className="text-2xl font-extrabold text-navy mb-6">Partidos</h1>
 
       <div className="flex gap-2 mb-6">
         <Link
@@ -58,11 +84,15 @@ export default async function AdminMatchesPage({ searchParams }: PageProps) {
                 <th className="px-4 py-3 text-left">Partido</th>
                 <th className="px-4 py-3 text-left">Marcador</th>
                 <th className="px-4 py-3 text-left">Cancha</th>
+                <th className="px-4 py-3 text-left">Asistencia</th>
                 <th className="px-4 py-3"></th>
               </tr>
             </thead>
             <tbody>
-              {matches.map(m => (
+              {matches.map(m => {
+                const att = attendanceByMatch.get(m.id)
+                const initialized = !!att && att.total > 0
+                return (
                 <tr key={m.id} className="border-b border-gray-50 hover:bg-gray-50">
                   <td className="px-4 py-3 text-gray-600">
                     {new Date(m.date).toLocaleString('es-CL', {
@@ -102,6 +132,18 @@ export default async function AdminMatchesPage({ searchParams }: PageProps) {
                       : '—'}
                   </td>
                   <td className="px-4 py-3 text-gray-500">{m.venue ?? '—'}</td>
+                  <td className="px-4 py-3">
+                    {!initialized ? (
+                      <span className="text-gray-300">—</span>
+                    ) : (
+                      <span
+                        className="font-medium text-navy tabular-nums"
+                        title={`${att!.attended} asistencias de ${att!.total} jugadores registrados`}
+                      >
+                        {att!.attended}
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-right">
                     <Link
                       href={`/admin/matches/${m.id}/attendance`}
@@ -111,7 +153,8 @@ export default async function AdminMatchesPage({ searchParams }: PageProps) {
                     </Link>
                   </td>
                 </tr>
-              ))}
+                )
+              })}
             </tbody>
           </table>
         </div>

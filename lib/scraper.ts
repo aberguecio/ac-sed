@@ -130,6 +130,15 @@ async function saveMatchEvents(matchId: number, leagueMatchId: number) {
 
       if (!playerId) continue
 
+      // Ensure Team exists so ScrapedPlayer.teamId FK resolves
+      if (event.teamId && event.team?.name) {
+        await prisma.team.upsert({
+          where: { id: event.teamId },
+          create: { id: event.teamId, name: event.team.name },
+          update: {},
+        })
+      }
+
       // Save or update player in ScrapedPlayer table
       const playerData = event.player || {}
       await prisma.scrapedPlayer.upsert({
@@ -141,7 +150,6 @@ async function saveMatchEvents(matchId: number, leagueMatchId: number) {
           email: playerData.email,
           run: playerData.run,
           teamId: event.teamId,
-          teamName,
         },
         update: {
           firstName: playerData.firstName || '',
@@ -149,7 +157,6 @@ async function saveMatchEvents(matchId: number, leagueMatchId: number) {
           email: playerData.email,
           run: playerData.run,
           teamId: event.teamId,
-          teamName,
           updatedAt: new Date(),
         }
       })

@@ -77,10 +77,11 @@ model Team {
   updatedAt    DateTime @updatedAt
 
   // Relations
-  homeMatches  Match[]  @relation("HomeTeam")
-  awayMatches  Match[]  @relation("AwayTeam")
-  standings    Standing[]
-  scorers      LeagueScorer[]
+  homeMatches    Match[]  @relation("HomeTeam")
+  awayMatches    Match[]  @relation("AwayTeam")
+  standings      Standing[]
+  scorers        LeagueScorer[]
+  scrapedPlayers ScrapedPlayer[]
 
   @@index([name])
 }
@@ -196,9 +197,11 @@ model ScrapedPlayer {
   email         String?
   run           String?
   teamId        Int?
+  /// @deprecated use `team.name` via the `teamId` relation. Kept temporarily; will be dropped once the new path is verified in prod.
   teamName      String?
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
+  team          Team?       @relation(fields: [teamId], references: [id], onDelete: SetNull)
   goals         MatchGoal[]
   cards         MatchCard[]
 

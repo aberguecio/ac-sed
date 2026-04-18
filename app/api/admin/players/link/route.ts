@@ -1,6 +1,22 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { syncPlayerMatchEventsForMatch } from '@/lib/player-match-sync'
+import { ACSED_TEAM_ID } from '@/lib/team-utils'
+
+type ScrapedWithTeam = {
+  id: number
+  firstName: string
+  lastName: string
+  email: string | null
+  run: string | null
+  teamId: number | null
+  createdAt: Date
+  updatedAt: Date
+  team: { name: string } | null
+}
+type ScrapedWithTeamAndCount = ScrapedWithTeam & {
+  _count: { goals: number; cards: number }
+}
 
 // GET - Get unlinked scraped players and roster players
 export async function GET() {
@@ -16,17 +32,15 @@ export async function GET() {
       .map(p => p.leaguePlayerId!)
 
     // Get scraped AC SED players that are NOT linked to any roster player
-    const unlinkedScraped = await prisma.scrapedPlayer.findMany({
+    const unlinkedScrapedRaw = await prisma.scrapedPlayer.findMany({
       where: {
-        teamName: {
-          contains: 'AC Sed',
-          mode: 'insensitive'
-        },
+        teamId: ACSED_TEAM_ID,
         id: {
           notIn: linkedScrapedPlayerIds
         }
       },
       include: {
+        team: { select: { name: true } },
         _count: {
           select: {
             goals: true,
@@ -38,6 +52,9 @@ export async function GET() {
         lastName: 'asc'
       }
     })
+    const unlinkedScraped = (unlinkedScrapedRaw as ScrapedWithTeamAndCount[]).map(
+      ({ team, ...rest }) => ({ ...rest, teamName: team?.name ?? null })
+    )
 
     // Get roster players that are not linked to any scraped player
     const unlinkedRoster = await prisma.player.findMany({
@@ -51,16 +68,22 @@ export async function GET() {
     })
 
     // Get all unlinked scraped players for the dropdown (any team)
-    const allUnlinkedScraped = await prisma.scrapedPlayer.findMany({
+    const allUnlinkedScrapedRaw = await prisma.scrapedPlayer.findMany({
       where: {
         id: {
           notIn: linkedScrapedPlayerIds
         }
       },
+      include: {
+        team: { select: { name: true } }
+      },
       orderBy: {
         lastName: 'asc'
       }
     })
+    const allUnlinkedScraped = (allUnlinkedScrapedRaw as ScrapedWithTeam[]).map(
+      ({ team, ...rest }) => ({ ...rest, teamName: team?.name ?? null })
+    )
 
     return NextResponse.json({
       unlinkedScraped,
