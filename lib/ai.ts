@@ -4,7 +4,7 @@ import type { Match } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { isACSED } from '@/lib/team-utils'
 
-function getModel() {
+export function getModel() {
   const model = process.env.AI_MODEL ?? 'gpt-4o-mini'
   const apiKey = process.env.AI_API_KEY
   const baseURL = process.env.AI_BASE_URL

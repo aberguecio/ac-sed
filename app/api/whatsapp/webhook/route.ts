@@ -7,8 +7,11 @@ import {
   resolvePollVote,
 } from '@/lib/whatsapp'
 import { scheduleGroupSummary } from '@/lib/attendance-notifier'
+import { answerGroupQuestion } from '@/lib/ai-whatsapp-agent'
 
 const GROUP_SUMMARY_DELAY_MS = 5 * 60 * 1000
+const AI_RATE_LIMIT_MS = 10 * 1000
+const AI_REPLY_TYPING_MS = 2500
 
 export async function GET() {
   return NextResponse.json({ ok: true })
@@ -21,14 +24,30 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const vote = await provider.parsePollVote(req)
-  if (!vote) {
-    // Evento no relacionado con encuestas (mensaje de texto libre, sticker,
-    // notificación del sistema, etc.). Responder 200 para que Evolution no
-    // reintente.
+  let payload: unknown
+  try {
+    payload = await req.json()
+  } catch {
     return NextResponse.json({ ok: true, handled: false })
   }
 
+  const vote = provider.parsePollVote(payload)
+  if (vote) return handlePollVote(vote)
+
+  const text = provider.parseIncomingText(payload)
+  if (text) {
+    const result = await handleIncomingText(text)
+    return NextResponse.json(result)
+  }
+
+  // Evento no relacionado con encuestas ni texto manejable. Responder 200 para
+  // que Evolution no reintente.
+  return NextResponse.json({ ok: true, handled: false })
+}
+
+type PollVote = NonNullable<ReturnType<ReturnType<typeof getWhatsappProvider>['parsePollVote']>>
+
+async function handlePollVote(vote: PollVote): Promise<Response> {
   const existing = await prisma.whatsappMessage.findUnique({
     where: { providerMessageId: vote.eventId },
     select: { id: true },
@@ -100,4 +119,110 @@ export async function POST(req: Request) {
   }
 
   return NextResponse.json({ ok: true })
+}
+
+type IncomingText = NonNullable<ReturnType<ReturnType<typeof getWhatsappProvider>['parseIncomingText']>>
+
+async function handleIncomingText(text: IncomingText): Promise<Record<string, unknown>> {
+  // Guardrails — orden importa.
+  if (text.fromMe) return { ok: true, handled: false, reason: 'self' }
+
+  const groupJid = process.env.WHATSAPP_ATTENDANCE_GROUP_JID
+  if (!groupJid || text.remoteJid !== groupJid) {
+    return { ok: true, handled: false, reason: 'not-target-group' }
+  }
+
+  const botJid = process.env.WHATSAPP_BOT_JID
+  if (!botJid || !text.mentionedJid.includes(botJid)) {
+    return { ok: true, handled: false, reason: 'not-mentioned' }
+  }
+
+  // Idempotencia: si ya procesamos este providerMessageId, salir.
+  const existing = await prisma.whatsappMessage.findUnique({
+    where: { providerMessageId: text.eventId },
+    select: { id: true },
+  })
+  if (existing) return { ok: true, duplicate: true }
+
+  // Rate limit por sender (10s) — protege contra spam y loops.
+  if (text.senderJid) {
+    const recent = await prisma.whatsappMessage.findFirst({
+      where: {
+        senderJid: text.senderJid,
+        direction: 'INBOUND',
+        groupJid,
+        createdAt: { gte: new Date(Date.now() - AI_RATE_LIMIT_MS) },
+      },
+      select: { id: true },
+    })
+    if (recent) {
+      console.log('[whatsapp ai] rate-limited', text.senderJid)
+      return { ok: true, handled: false, reason: 'rate-limited' }
+    }
+  }
+
+  // Resolver player si existe (best-effort; no bloquea respuesta).
+  const phone = text.senderJid ? normalizeInboundPhone(stripJidToPhone(text.senderJid)) : null
+  const player = phone
+    ? await prisma.player.findFirst({
+        where: { phoneNumber: phone },
+        select: { id: true },
+      })
+    : null
+
+  // Persistir la pregunta antes de llamar al modelo (asegura idempotencia
+  // aunque la generación falle o tarde).
+  await prisma.whatsappMessage.create({
+    data: {
+      playerId: player?.id ?? null,
+      groupJid,
+      senderJid: text.senderJid,
+      direction: 'INBOUND',
+      content: text.text,
+      providerMessageId: text.eventId,
+      timestamp: text.timestamp,
+    },
+  })
+
+  let answer: string
+  try {
+    const result = await answerGroupQuestion(text.text)
+    answer = result.answer
+    console.log('[whatsapp ai] answered', {
+      sender: text.senderJid,
+      tools: result.toolCalls,
+      finishReason: result.finishReason,
+      length: answer.length,
+    })
+  } catch (err) {
+    console.error('[whatsapp ai] generation failed', err)
+    return { ok: true, handled: false, reason: 'ai-error' }
+  }
+
+  if (!answer) return { ok: true, handled: false, reason: 'empty-answer' }
+
+  try {
+    const sent = await getWhatsappProvider().sendText(groupJid, answer, AI_REPLY_TYPING_MS)
+    await prisma.whatsappMessage.create({
+      data: {
+        playerId: null,
+        groupJid,
+        senderJid: null,
+        direction: 'OUTBOUND',
+        content: answer,
+        providerMessageId: sent.id,
+        timestamp: new Date(),
+      },
+    })
+  } catch (err) {
+    console.error('[whatsapp ai] send failed', err)
+    return { ok: true, handled: false, reason: 'send-error' }
+  }
+
+  return { ok: true, handled: true }
+}
+
+function stripJidToPhone(jid: string): string {
+  const at = jid.indexOf('@')
+  return at === -1 ? jid : jid.slice(0, at)
 }

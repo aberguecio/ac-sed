@@ -42,7 +42,7 @@ model Stage {
   id           Int        @id // Liga B API stage ID
   tournamentId Int
   name         String?
-  orderIndex   Int        @default(0) // Para ordenar las fases
+  orderIndex   Int        @default(0) // For ordering phases
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
@@ -73,7 +73,7 @@ model Group {
 model Team {
   id           Int      @id // Liga B API team ID
   name         String
-  logoUrl      String?  // Base URL sin el prefijo de tamaño (e.g., "UUID.jpeg")
+  logoUrl      String?  // Base URL without the size prefix (e.g., "UUID.jpeg")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -93,7 +93,7 @@ model Match {
   stageId       Int?
   groupId       Int?
   date          DateTime
-  venue         String?       // Cancha (mapeado desde "grounds" en la API)
+  venue         String?       // Venue (mapped from "grounds" in the API)
   homeTeamId    Int?
   awayTeamId    Int?
   homeScore     Int?
@@ -101,9 +101,9 @@ model Match {
   roundName     String?
   leagueMatchId String?       @unique
   scrapedAt     DateTime      @default(now())
-  // Debounce para el resumen de asistencia al grupo de WhatsApp. Se setea a
-  // `now + 5min` en cada voto de encuesta (partidos futuros) y se limpia tras
-  // enviar. Persistido para sobrevivir reinicios vía instrumentation.ts.
+  // Debounce for the WhatsApp group attendance summary. Set to `now + 5min`
+  // on each poll vote (future matches) and cleared after sending. Persisted
+  // to survive restarts via instrumentation.ts.
   notifyGroupAt DateTime?
   news           NewsArticle[]
   instagramPosts InstagramPost[]
@@ -184,9 +184,9 @@ model Player {
   statFisico       Int?
   // Link to scraped player data
   leaguePlayerId   Int?           @unique // ID from Liga B API
-  // Contactabilidad (WhatsApp) - teléfono normalizado a 569XXXXXXXX
+  // WhatsApp contact - phone normalized to 569XXXXXXXX
   phoneNumber      String?        @unique
-  // Apodos / sobrenombres para personalización de posts, noticias, mensajes IA
+  // Nicknames for personalization in posts, news, AI messages
   nicknames        String[]       @default([])
   goals            MatchGoal[]
   cards            MatchCard[]
@@ -265,7 +265,7 @@ model TournamentAnalysis {
   stageId      Int
   groupId      Int
   content      String      @db.Text
-  dataHash     String      // Hash de los datos para detectar cambios
+  dataHash     String      // Hash of the data to detect changes
   aiProvider   String?
   generatedAt  DateTime    @default(now())
 
@@ -354,23 +354,23 @@ model InstagramPostImage {
   @@index([postId])
 }
 
-// Relación partido-jugador: asistencia + rendimiento agregado por partido.
-// Convive con MatchGoal/MatchCard (eventos atómicos por minuto) sin reemplazarlos.
+// Match-player relation: attendance + aggregated performance per match.
+// Coexists with MatchGoal/MatchCard (per-minute atomic events) without replacing them.
 model PlayerMatch {
   id               Int              @id @default(autoincrement())
   playerId         Int
   matchId          Int
   attendanceStatus AttendanceStatus @default(PENDING)
-  rating           Int?             // 1-10 (validado en API)
-  // Performance agregado del partido
+  rating           Int?             // 1-10 (validated in API)
+  // Aggregated match performance
   goals            Int              @default(0)
-  yellowCards      Int              @default(0) // 0, 1, o 2
-  redCard          Boolean          @default(false) // true si expulsado (directa o doble amarilla)
+  yellowCards      Int              @default(0) // 0, 1, or 2
+  redCard          Boolean          @default(false) // true if sent off (direct red or two yellows)
   notes            String?
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
 
-  // Restrict en Player: preserva asistencia histórica; Player se soft-deletea vía active:false.
+  // Restrict on Player: preserves historical attendance; Player is soft-deleted via active:false.
   player           Player           @relation(fields: [playerId], references: [id], onDelete: Restrict)
   match            Match            @relation(fields: [matchId], references: [id], onDelete: Cascade)
 
@@ -380,24 +380,33 @@ model PlayerMatch {
   @@index([attendanceStatus])
 }
 
-// Bitácora de mensajes WhatsApp (enviados/recibidos) por jugador.
+// Log of WhatsApp messages (sent/received). Covers both 1:1 polls (playerId
+// required in practice) and AI bot Q/A in groups (playerId may be null if
+// the sender isn't on the roster; groupJid distinguishes the context).
 model WhatsappMessage {
   id                  Int              @id @default(autoincrement())
-  playerId            Int
+  playerId            Int?
   matchId             Int?
+  // Group JID when the message was part of a group conversation (AI).
+  // NULL for 1:1 messages (attendance polls).
+  groupJid            String?
+  // Real sender JID (for group INBOUND when playerId may be null).
+  // Enables per-user rate-limiting and audit.
+  senderJid           String?
   direction           MessageDirection
   content             String           @db.Text
-  // Id de mensaje/evento del proveedor (Evolution). OUTBOUND: id del poll enviado;
-  // INBOUND: id del evento de voto (único por cambio de voto). Habilita idempotencia
-  // de webhook y permite mapear un voto entrante al poll original.
+  // Provider (Evolution) message/event id. OUTBOUND: id of the sent poll or
+  // bot-generated text; INBOUND: id of the inbound event. Enables webhook
+  // idempotency and lets us map an incoming vote back to its original poll.
   providerMessageId   String?          @unique
-  timestamp           DateTime         // Tiempo del proveedor/envío (fallback: now() en ingest)
-  createdAt           DateTime         @default(now()) // Tiempo de ingesta en el servidor
+  timestamp           DateTime         // Provider/send time (fallback: now() at ingest)
+  createdAt           DateTime         @default(now()) // Server ingest time
 
-  player     Player           @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  player     Player?          @relation(fields: [playerId], references: [id], onDelete: Cascade)
   match      Match?           @relation(fields: [matchId], references: [id], onDelete: SetNull)
 
   @@index([playerId])
   @@index([matchId])
   @@index([timestamp])
+  @@index([senderJid, createdAt])
 }

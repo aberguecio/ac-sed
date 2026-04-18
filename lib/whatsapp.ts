@@ -27,6 +27,18 @@ export interface ParsedPollVote {
   eventId: string
 }
 
+export interface ParsedIncomingText {
+  from: string                 // remoteJid stripped (phone or group id sin @s.whatsapp.net/@g.us)
+  remoteJid: string            // raw remoteJid (incluye @g.us para grupos)
+  senderJid: string | null     // participant en grupos; null en 1:1
+  isGroup: boolean
+  fromMe: boolean
+  text: string
+  mentionedJid: string[]
+  timestamp: Date
+  eventId: string
+}
+
 export interface WhatsappProvider {
   sendPoll(
     to: string,
@@ -35,7 +47,8 @@ export interface WhatsappProvider {
     typingMs: number
   ): Promise<{ id: string }>
   sendText(to: string, body: string, typingMs?: number): Promise<{ id: string }>
-  parsePollVote(req: Request): Promise<ParsedPollVote | null>
+  parsePollVote(payload: unknown): ParsedPollVote | null
+  parseIncomingText(payload: unknown): ParsedIncomingText | null
   verifySignature(req: Request): boolean
 }
 
@@ -164,14 +177,9 @@ class EvolutionProvider implements WhatsappProvider {
     return { id }
   }
 
-  async parsePollVote(req: Request): Promise<ParsedPollVote | null> {
-    let payload: Record<string, unknown>
-    try {
-      payload = (await req.json()) as Record<string, unknown>
-    } catch {
-      return null
-    }
-    const data = payload.data as Record<string, unknown> | undefined
+  parsePollVote(payload: unknown): ParsedPollVote | null {
+    if (!payload || typeof payload !== 'object') return null
+    const data = (payload as Record<string, unknown>).data as Record<string, unknown> | undefined
     if (!data) return null
 
     const pollMessageId = extractPollCreationId(data)
@@ -193,6 +201,57 @@ class EvolutionProvider implements WhatsappProvider {
       from: stripWhatsappJid(remoteJid),
       pollMessageId,
       selectedOption,
+      timestamp,
+      eventId,
+    }
+  }
+
+  parseIncomingText(payload: unknown): ParsedIncomingText | null {
+    if (!payload || typeof payload !== 'object') return null
+    const data = (payload as Record<string, unknown>).data as Record<string, unknown> | undefined
+    if (!data) return null
+
+    const message = data.message as Record<string, unknown> | undefined
+    if (!message) return null
+
+    // Extraer texto: extendedTextMessage (con metadata de menciones) o conversation (texto plano)
+    const ext = message.extendedTextMessage as Record<string, unknown> | undefined
+    let text: string | null = null
+    let mentionedJid: string[] = []
+    if (ext && typeof ext.text === 'string') {
+      text = ext.text
+      const ctx = ext.contextInfo as Record<string, unknown> | undefined
+      const raw = ctx?.mentionedJid
+      if (Array.isArray(raw)) mentionedJid = raw.filter((x): x is string => typeof x === 'string')
+    } else if (typeof message.conversation === 'string') {
+      text = message.conversation
+    }
+    if (!text) return null
+
+    const key = data.key as Record<string, unknown> | undefined
+    const remoteJid = key?.remoteJid
+    const eventId = key?.id
+    if (typeof remoteJid !== 'string' || typeof eventId !== 'string') return null
+
+    const fromMe = key?.fromMe === true
+    const isGroup = remoteJid.endsWith('@g.us')
+    const participant = key?.participant
+    const senderJid = isGroup && typeof participant === 'string' ? participant : null
+
+    const tsRaw = data.messageTimestamp
+    const tsSec = typeof tsRaw === 'number'
+      ? tsRaw
+      : typeof tsRaw === 'string' ? parseInt(tsRaw, 10) : NaN
+    const timestamp = Number.isFinite(tsSec) ? new Date(tsSec * 1000) : new Date()
+
+    return {
+      from: stripWhatsappJid(remoteJid),
+      remoteJid,
+      senderJid,
+      isGroup,
+      fromMe,
+      text,
+      mentionedJid,
       timestamp,
       eventId,
     }
@@ -290,6 +349,9 @@ export async function resolvePollVote(
     },
   })
   if (!original || original.direction !== 'OUTBOUND') return null
+  // Polls 1:1 siempre se crean con playerId; defensivo igualmente porque el
+  // schema permite null para soportar conversaciones grupales del bot AI.
+  if (original.playerId == null || !original.player) return null
   if (original.player.phoneNumber !== voterPhone) return null
   return { playerId: original.playerId, matchId: original.matchId }
 }
