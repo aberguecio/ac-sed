@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { HexagonStats, type PlayerStats } from '@/components/hexagon-stats'
+import { TagsInput } from '@/components/tags-input'
 
 interface Player {
   id: number
@@ -12,6 +13,8 @@ interface Player {
   bio: string | null
   active: boolean
   leaguePlayerId: number | null
+  phoneNumber: string | null
+  nicknames: string[]
   statRitmo: number | null
   statDisparo: number | null
   statPase: number | null
@@ -49,13 +52,14 @@ const emptyStats: PlayerStats = {
   statFisico: null,
 }
 
-const emptyForm = { name: '', position: '', number: '', bio: '' }
+const emptyForm = { name: '', position: '', number: '', bio: '', phoneNumber: '' }
 
 export default function AdminPlayersPage() {
   const [players, setPlayers] = useState<Player[]>([])
   const [loading, setLoading] = useState(true)
   const [form, setForm] = useState(emptyForm)
   const [stats, setStats] = useState<PlayerStats>(emptyStats)
+  const [nicknames, setNicknames] = useState<string[]>([])
   const [editId, setEditId] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -91,7 +95,13 @@ export default function AdminPlayersPage() {
 
   function startEdit(p: Player) {
     setEditId(p.id)
-    setForm({ name: p.name, position: p.position ?? '', number: p.number?.toString() ?? '', bio: p.bio ?? '' })
+    setForm({
+      name: p.name,
+      position: p.position ?? '',
+      number: p.number?.toString() ?? '',
+      bio: p.bio ?? '',
+      phoneNumber: p.phoneNumber ?? '',
+    })
     setStats({
       statRitmo: p.statRitmo,
       statDisparo: p.statDisparo,
@@ -100,6 +110,7 @@ export default function AdminPlayersPage() {
       statDefensa: p.statDefensa,
       statFisico: p.statFisico,
     })
+    setNicknames(p.nicknames ?? [])
     setPhotoUrl(p.photoUrl)
     setPhotoPreview(p.photoUrl)
     setPhotoFile(null)
@@ -109,6 +120,7 @@ export default function AdminPlayersPage() {
     setEditId(null)
     setForm(emptyForm)
     setStats(emptyStats)
+    setNicknames([])
     setPhotoUrl(null)
     setPhotoPreview(null)
     setPhotoFile(null)
@@ -151,6 +163,8 @@ export default function AdminPlayersPage() {
       position: form.position || null,
       number: form.number ? parseInt(form.number) : null,
       bio: form.bio || null,
+      phoneNumber: form.phoneNumber.trim() === '' ? null : form.phoneNumber.trim(),
+      nicknames,
       ...Object.fromEntries(
         Object.entries(stats).map(([k, v]) => [k, v ?? null])
       ),
@@ -159,17 +173,29 @@ export default function AdminPlayersPage() {
     let savedId = editId
 
     if (editId) {
-      await fetch(`/api/players/${editId}`, {
+      const res = await fetch(`/api/players/${editId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(baseBody),
       })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        alert(data.error || 'Error al guardar')
+        setSaving(false)
+        return
+      }
     } else {
       const res = await fetch('/api/players', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(baseBody),
       })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        alert(data.error || 'Error al crear')
+        setSaving(false)
+        return
+      }
       const created = await res.json()
       savedId = created.id
     }
@@ -188,6 +214,7 @@ export default function AdminPlayersPage() {
 
     setForm(emptyForm)
     setStats(emptyStats)
+    setNicknames([])
     setEditId(null)
     setPhotoUrl(null)
     setPhotoPreview(null)
@@ -297,6 +324,30 @@ export default function AdminPlayersPage() {
                 />
               </div>
             ))}
+
+            {/* Phone */}
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Teléfono (WhatsApp)</label>
+              <input
+                type="tel"
+                value={form.phoneNumber}
+                onChange={(e) => setForm({ ...form, phoneNumber: e.target.value })}
+                placeholder="+56 9 9562 0994"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-navy"
+              />
+              <p className="text-[11px] text-gray-400 mt-1">Opcional. Usado para consulta de asistencia.</p>
+            </div>
+
+            {/* Nicknames */}
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Apodos / Sobrenombres</label>
+              <TagsInput
+                value={nicknames}
+                onChange={setNicknames}
+                placeholder="Pancho, Tito..."
+              />
+              <p className="text-[11px] text-gray-400 mt-1">Presiona Enter o coma para agregar. Usados para posts e IA.</p>
+            </div>
 
             {/* Photo upload */}
             <div>

@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db'
 import { PlayerCard } from '@/components/player-card'
+import { PUBLIC_PLAYER_SELECT } from '@/lib/player-utils'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
@@ -29,7 +30,8 @@ export default async function PlayersPage() {
 
   const players = await prisma.player.findMany({
     where: { active: true },
-    include: {
+    select: {
+      ...PUBLIC_PLAYER_SELECT,
       goals: {
         select: {
           id: true,

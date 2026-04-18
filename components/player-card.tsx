@@ -1,8 +1,10 @@
 import type { Player } from '@prisma/client'
 import { HexagonStats } from './hexagon-stats'
 
+type PublicPlayer = Omit<Player, 'phoneNumber'>
+
 interface Props {
-  player: Player & {
+  player: PublicPlayer & {
     totalGoals?: number
     currentPhaseGoals?: number
   }
@@ -32,7 +34,7 @@ const POSITION_LABELS: Record<string, string> = {
   delantero: 'Delantero',
 }
 
-function hasAnyStats(player: Player) {
+function hasAnyStats(player: PublicPlayer) {
   return (
     player.statRitmo != null ||
     player.statDisparo != null ||
