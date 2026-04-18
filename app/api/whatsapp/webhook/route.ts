@@ -14,17 +14,7 @@ export async function GET() {
 export async function POST(req: Request) {
   const provider = getWhatsappProvider()
 
-  // --- DEBUG: capturamos el body crudo antes de nada para poder inspeccionarlo.
-  // Clonamos el request porque el body sólo se puede leer una vez.
-  const rawBody = await req.clone().text()
-  const hasKey = !!req.headers.get('x-integration-key')
-  console.log('[whatsapp webhook] POST received', {
-    hasIntegrationKey: hasKey,
-    bodyPreview: rawBody.slice(0, 1500),
-  })
-
   if (!provider.verifySignature(req)) {
-    console.warn('[whatsapp webhook] signature verification FAILED')
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -33,20 +23,14 @@ export async function POST(req: Request) {
     // Evento no relacionado con encuestas (mensaje de texto libre, sticker,
     // notificación del sistema, etc.). Responder 200 para que Evolution no
     // reintente.
-    console.log('[whatsapp webhook] parsePollVote returned null — not a poll event')
     return NextResponse.json({ ok: true, handled: false })
   }
-
-  console.log('[whatsapp webhook] parsed vote', vote)
 
   const existing = await prisma.whatsappMessage.findUnique({
     where: { providerMessageId: vote.eventId },
     select: { id: true },
   })
-  if (existing) {
-    console.log('[whatsapp webhook] duplicate eventId', vote.eventId)
-    return NextResponse.json({ ok: true, duplicate: true })
-  }
+  if (existing) return NextResponse.json({ ok: true, duplicate: true })
 
   const phone = normalizeInboundPhone(vote.from)
   if (!phone) {
@@ -69,7 +53,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, handled: false })
   }
 
-  console.log('[whatsapp webhook] updating attendance', {
+  console.log('[whatsapp webhook] vote applied', {
     playerId: resolved.playerId,
     matchId: resolved.matchId,
     status,
