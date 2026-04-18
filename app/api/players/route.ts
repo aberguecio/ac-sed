@@ -49,8 +49,11 @@ export async function POST(req: NextRequest) {
   const body = await req.json()
   const data = sanitizePlayerInput(body)
   if (data instanceof Response) return data
+  if (typeof data.name !== 'string' || data.name.trim() === '') {
+    return NextResponse.json({ error: 'El nombre es obligatorio' }, { status: 400 })
+  }
   try {
-    const player = await prisma.player.create({ data })
+    const player = await prisma.player.create({ data: { ...data, name: data.name } })
     return NextResponse.json(player, { status: 201 })
   } catch (err: unknown) {
     if (isP2002(err)) {
