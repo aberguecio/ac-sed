@@ -312,7 +312,7 @@ export default function InstagramAdminPage() {
   if (loading) return <div className="p-8 text-gray-500">Cargando...</div>
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       {/* Success banner */}
       {successMsg && (
         <div className="mb-4 bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg flex justify-between items-center">
@@ -396,23 +396,23 @@ export default function InstagramAdminPage() {
       {posts.length === 0 ? (
         <p className="text-gray-400 text-center py-12">No hay posts de Instagram todavia</p>
       ) : (
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="bg-white rounded-xl shadow-sm overflow-x-auto">
+          <table className="w-full text-xs sm:text-sm min-w-[800px]">
             <thead>
               <tr className="bg-gray-50 text-left text-gray-500 text-xs uppercase tracking-wider">
-                <th className="px-4 py-3">Tipo</th>
-                <th className="px-4 py-3">Caption</th>
-                <th className="px-4 py-3">Imgs</th>
-                <th className="px-4 py-3">Estado</th>
-                <th className="px-4 py-3">Fecha</th>
-                <th className="px-4 py-3">Acciones</th>
+                <th className="px-2 py-2 sm:px-4 sm:py-3">Tipo</th>
+                <th className="px-2 py-2 sm:px-4 sm:py-3">Caption</th>
+                <th className="px-2 py-2 sm:px-4 sm:py-3">Imgs</th>
+                <th className="px-2 py-2 sm:px-4 sm:py-3">Estado</th>
+                <th className="px-2 py-2 sm:px-4 sm:py-3">Fecha</th>
+                <th className="px-2 py-2 sm:px-4 sm:py-3">Acciones</th>
               </tr>
             </thead>
             <tbody>
               {posts.map(post => (
                 <tr key={post.id} className="border-b border-gray-50 hover:bg-gray-50">
-                  <td className="px-4 py-3">{typeBadge(post.postType)}</td>
-                  <td className="px-4 py-3 max-w-xs">
+                  <td className="px-2 py-2 sm:px-4 sm:py-3">{typeBadge(post.postType)}</td>
+                  <td className="px-2 py-2 sm:px-4 sm:py-3 max-w-xs">
                     <p className="truncate text-navy font-medium">{post.caption.slice(0, 80)}{post.caption.length > 80 ? '...' : ''}</p>
                     {post.match && (
                       <p className="text-xs text-gray-400 mt-0.5">
@@ -420,7 +420,7 @@ export default function InstagramAdminPage() {
                       </p>
                     )}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-2 py-2 sm:px-4 sm:py-3">
                     <div className="flex gap-1">
                       {post.images.slice(0, 3).map(img => (
                         <img key={img.id} src={img.imageUrl} alt="" className="w-8 h-8 rounded object-cover" />
@@ -429,19 +429,19 @@ export default function InstagramAdminPage() {
                       {post.images.length > 3 && <span className="text-xs text-gray-400">+{post.images.length - 3}</span>}
                     </div>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-2 py-2 sm:px-4 sm:py-3">
                     {statusBadge(post.status)}
                     {post.status === 'failed' && post.errorMessage && (
                       <p className="text-xs text-red-500 mt-1 max-w-[150px] truncate" title={post.errorMessage}>{post.errorMessage}</p>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-gray-400 text-xs">
+                  <td className="px-2 py-2 sm:px-4 sm:py-3 text-gray-400 text-xs">
                     {new Date(post.generatedAt).toLocaleDateString('es-CL')}
                     {post.publishedAt && (
                       <p className="text-green-600">Pub: {new Date(post.publishedAt).toLocaleDateString('es-CL')}</p>
                     )}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-2 py-2 sm:px-4 sm:py-3">
                     <div className="flex gap-2 flex-wrap">
                       <button
                         onClick={() => openEdit(post)}

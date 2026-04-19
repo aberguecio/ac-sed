@@ -287,6 +287,72 @@ export const listRosterTool = tool({
   },
 })
 
+export const getMatchAttendanceTool = tool({
+  description:
+    'Devuelve la asistencia de AC SED a un partido (por matchId): listas de jugadores confirmados, llega tarde, de visita, declinaron, no_show y pendientes (sin responder). Cada jugador tiene name, nicknames, position, number. NUNCA devuelve teléfonos. Útil para "quiénes van al partido del sábado", "cuántos confirmaron", etc.',
+  parameters: z.object({ matchId: z.number().int() }),
+  execute: async ({ matchId }) => {
+    const rows = await prisma.playerMatch.findMany({
+      where: { matchId },
+      select: {
+        attendanceStatus: true,
+        player: {
+          select: {
+            id: true,
+            name: true,
+            nicknames: true,
+            position: true,
+            number: true,
+            active: true,
+          },
+        },
+      },
+    })
+
+    const buckets: Record<string, Array<typeof rows[number]['player']>> = {
+      confirmed: [],
+      late: [],
+      visiting: [],
+      declined: [],
+      noShow: [],
+      pending: [],
+    }
+    const statusToBucket: Record<string, keyof typeof buckets> = {
+      CONFIRMED: 'confirmed',
+      LATE: 'late',
+      VISITING: 'visiting',
+      DECLINED: 'declined',
+      NO_SHOW: 'noShow',
+      PENDING: 'pending',
+    }
+
+    for (const r of rows) {
+      const bucket = statusToBucket[r.attendanceStatus]
+      if (bucket) buckets[bucket].push(r.player)
+    }
+
+    const sortByNumber = (a: { number: number | null }, b: { number: number | null }) =>
+      (a.number ?? 9999) - (b.number ?? 9999)
+    for (const k of Object.keys(buckets)) buckets[k].sort(sortByNumber)
+
+    const attendingCount = buckets.confirmed.length + buckets.late.length + buckets.visiting.length
+    return {
+      matchId,
+      counts: {
+        confirmed: buckets.confirmed.length,
+        late: buckets.late.length,
+        visiting: buckets.visiting.length,
+        declined: buckets.declined.length,
+        noShow: buckets.noShow.length,
+        pending: buckets.pending.length,
+        attending: attendingCount,
+        total: rows.length,
+      },
+      ...buckets,
+    }
+  },
+})
+
 export const searchPlayerTool = tool({
   description:
     'Busca jugador del roster por nombre o apodo (fuzzy, case-insensitive). Devuelve id + nombre + apodos. NUNCA expone teléfonos.',
@@ -416,6 +482,108 @@ export const getPlayerSeasonStatsTool = tool({
       yellowCards,
       redCards,
     }
+  },
+})
+
+export const getTeamCardsTool = tool({
+  description:
+    'Tarjetas (amarillas y rojas) de los jugadores de un equipo (por nombre), opcionalmente filtradas por fecha. Devuelve, por jugador: total amarillas, total rojas, tarjetas recientes (partido, minuto, tipo) y si la tarjeta más reciente fue roja o segunda amarilla (candidato a suspensión en la próxima fecha). Útil para "quién está suspendido en el rival" o "cómo viene el rival de tarjetas".',
+  parameters: z.object({
+    teamName: z.string().min(1),
+    sinceDate: z.string().nullish().describe('ISO date — solo tarjetas de partidos jugados >= esta fecha.'),
+    limit: z.number().int().min(1).max(MAX_LIMIT).nullish(),
+  }),
+  execute: async ({ teamName, sinceDate, limit }) => {
+    const matchWhere: Record<string, unknown> = { homeScore: { not: null } }
+    if (sinceDate) matchWhere.date = { gte: new Date(sinceDate) }
+
+    const matchIds = (
+      await prisma.match.findMany({ where: matchWhere, select: { id: true } })
+    ).map(m => m.id)
+    if (matchIds.length === 0) return { teamName, players: [] }
+
+    const cards = await prisma.matchCard.findMany({
+      where: {
+        matchId: { in: matchIds },
+        teamName: { contains: teamName, mode: 'insensitive' },
+      },
+      include: {
+        scrapedPlayer: true,
+        match: {
+          select: {
+            id: true,
+            date: true,
+            homeTeam: { select: { name: true } },
+            awayTeam: { select: { name: true } },
+          },
+        },
+      },
+      orderBy: { match: { date: 'desc' } },
+      take: limit ?? MAX_LIMIT,
+    })
+
+    type Bucket = {
+      player: string
+      yellowCards: number
+      redCards: number
+      cards: Array<{
+        matchId: number
+        date: string
+        opponent: string
+        type: string
+        minute: number | null
+      }>
+      lastCardType: string | null
+      lastCardDate: string | null
+    }
+    const byPlayer = new Map<number, Bucket>()
+    for (const c of cards) {
+      const key = c.leaguePlayerId
+      const name = `${c.scrapedPlayer.firstName} ${c.scrapedPlayer.lastName}`.trim()
+      const homeName = c.match.homeTeam?.name ?? 'TBD'
+      const awayName = c.match.awayTeam?.name ?? 'TBD'
+      const isHome = homeName.toLowerCase().includes(teamName.toLowerCase())
+      const opponent = isHome ? awayName : homeName
+      const dateIso = c.match.date.toISOString()
+      let b = byPlayer.get(key)
+      if (!b) {
+        b = {
+          player: name,
+          yellowCards: 0,
+          redCards: 0,
+          cards: [],
+          lastCardType: null,
+          lastCardDate: null,
+        }
+        byPlayer.set(key, b)
+      }
+      if (c.cardType === 'red') b.redCards++
+      else if (c.cardType === 'yellow') b.yellowCards++
+      b.cards.push({
+        matchId: c.matchId,
+        date: dateIso,
+        opponent,
+        type: c.cardType,
+        minute: c.minute,
+      })
+      if (!b.lastCardDate || dateIso > b.lastCardDate) {
+        b.lastCardDate = dateIso
+        b.lastCardType = c.cardType
+      }
+    }
+
+    const players = Array.from(byPlayer.values())
+      .map(b => {
+        const yellowsInLastMatch = b.cards.filter(
+          c => c.date === b.lastCardDate && c.type === 'yellow'
+        ).length
+        const likelySuspendedNextMatch =
+          b.lastCardType === 'red' || yellowsInLastMatch >= 2
+        return { ...b, likelySuspendedNextMatch }
+      })
+      .sort((a, b) => b.redCards * 10 + b.yellowCards - (a.redCards * 10 + a.yellowCards))
+
+    return { teamName, count: players.length, players }
   },
 })
 
@@ -719,6 +887,7 @@ export const whatsappAgentTools = {
   getMatchById: getMatchByIdTool,
   getMatchDetails: getMatchDetailsTool,
   getMatchGoals: getMatchGoalsTool,
+  getMatchAttendance: getMatchAttendanceTool,
   getNextMatch: getNextMatchTool,
   getLastPlayedMatch: getLastPlayedMatchTool,
   listRoster: listRosterTool,
@@ -726,6 +895,7 @@ export const whatsappAgentTools = {
   getTopScorers: getTopScorersTool,
   getPlayerSeasonStats: getPlayerSeasonStatsTool,
   getHeadToHead: getHeadToHeadTool,
+  getTeamCards: getTeamCardsTool,
   listTournaments: listTournamentsTool,
   getTournamentInfo: getTournamentInfoTool,
   getCurrentStandings: getCurrentStandingsTool,

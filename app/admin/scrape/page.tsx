@@ -75,7 +75,7 @@ export default function AdminScrapePage() {
   }
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <h1 className="text-2xl font-extrabold text-navy mb-2">Scraping</h1>
       <p className="text-gray-500 text-sm mb-8">
         Ejecuta el scraper manualmente para obtener los datos más recientes de ligab.cl.
@@ -130,27 +130,27 @@ export default function AdminScrapePage() {
         {logs.length === 0 ? (
           <p className="text-gray-400 text-sm">Sin historial aún.</p>
         ) : (
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-x-auto">
+            <table className="w-full text-xs sm:text-sm min-w-[700px]">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="px-4 py-3 text-left text-gray-500 font-medium">Inicio</th>
-                  <th className="px-4 py-3 text-left text-gray-500 font-medium">Torneo</th>
-                  <th className="px-4 py-3 text-left text-gray-500 font-medium">Estado</th>
-                  <th className="px-4 py-3 text-left text-gray-500 font-medium">Estadísticas</th>
-                  <th className="px-4 py-3 text-left text-gray-500 font-medium">Por</th>
+                  <th className="px-2 py-2 sm:px-4 sm:py-3 text-left text-gray-500 font-medium">Inicio</th>
+                  <th className="px-2 py-2 sm:px-4 sm:py-3 text-left text-gray-500 font-medium">Torneo</th>
+                  <th className="px-2 py-2 sm:px-4 sm:py-3 text-left text-gray-500 font-medium">Estado</th>
+                  <th className="px-2 py-2 sm:px-4 sm:py-3 text-left text-gray-500 font-medium">Estadísticas</th>
+                  <th className="px-2 py-2 sm:px-4 sm:py-3 text-left text-gray-500 font-medium">Por</th>
                 </tr>
               </thead>
               <tbody>
                 {logs.map((log) => (
                   <tr key={log.id} className="border-b border-gray-50 hover:bg-gray-50">
-                    <td className="px-4 py-3 text-gray-600">
+                    <td className="px-2 py-2 sm:px-4 sm:py-3 text-gray-600">
                       {new Date(log.startedAt).toLocaleString('es-CL', {
                         dateStyle: 'short',
                         timeStyle: 'short'
                       })}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-2 py-2 sm:px-4 sm:py-3">
                       <div className="font-medium text-navy">{log.tournamentName || '—'}</div>
                       {log.stageIds && (
                         <div className="text-xs text-gray-400">
@@ -158,7 +158,7 @@ export default function AdminScrapePage() {
                         </div>
                       )}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-2 py-2 sm:px-4 sm:py-3">
                       <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${
                         log.status === 'success' ? 'bg-green-100 text-green-700' :
                         log.status === 'error' ? 'bg-red-100 text-red-600' :
@@ -172,7 +172,7 @@ export default function AdminScrapePage() {
                         </p>
                       )}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-2 py-2 sm:px-4 sm:py-3">
                       <div className="space-y-0.5 text-xs">
                         <div className="flex gap-2">
                           <span className="text-gray-500">Partidos:</span>
@@ -188,7 +188,7 @@ export default function AdminScrapePage() {
                         ) : null}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-gray-500 text-xs">{log.triggeredBy}</td>
+                    <td className="px-2 py-2 sm:px-4 sm:py-3 text-gray-500 text-xs">{log.triggeredBy}</td>
                   </tr>
                 ))}
               </tbody>

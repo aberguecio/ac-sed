@@ -330,7 +330,7 @@ export default function AdminPlayersPage() {
   }
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <div className="flex items-center justify-between mb-8 gap-4 flex-wrap">
         <h1 className="text-2xl font-extrabold text-navy">Jugadores</h1>
         <div className="flex gap-2">
@@ -554,17 +554,17 @@ export default function AdminPlayersPage() {
           ) : players.length === 0 ? (
             <p className="text-gray-400 text-sm">Sin jugadores. Crea el primero.</p>
           ) : (
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-              <table className="w-full text-sm">
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-x-auto">
+              <table className="w-full text-xs sm:text-sm min-w-[900px]">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-100">
-                    <th className="px-4 py-3 text-left text-gray-500 font-medium">#</th>
-                    <th className="px-4 py-3 text-left text-gray-500 font-medium">Jugador</th>
-                    <th className="px-4 py-3 text-left text-gray-500 font-medium">Posición</th>
-                    <th className="px-4 py-3 text-left text-gray-500 font-medium">Asistencia</th>
-                    <th className="px-4 py-3 text-left text-gray-500 font-medium">Número</th>
-                    <th className="px-4 py-3 text-left text-gray-500 font-medium">Vinculación</th>
-                    <th className="px-4 py-3 text-right text-gray-500 font-medium">Acciones</th>
+                    <th className="px-2 py-2 sm:px-4 sm:py-3 text-left text-gray-500 font-medium">#</th>
+                    <th className="px-2 py-2 sm:px-4 sm:py-3 text-left text-gray-500 font-medium">Jugador</th>
+                    <th className="px-2 py-2 sm:px-4 sm:py-3 text-left text-gray-500 font-medium">Posición</th>
+                    <th className="px-2 py-2 sm:px-4 sm:py-3 text-left text-gray-500 font-medium">Asistencia</th>
+                    <th className="px-2 py-2 sm:px-4 sm:py-3 text-left text-gray-500 font-medium">Número</th>
+                    <th className="px-2 py-2 sm:px-4 sm:py-3 text-left text-gray-500 font-medium">Vinculación</th>
+                    <th className="px-2 py-2 sm:px-4 sm:py-3 text-right text-gray-500 font-medium">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -575,8 +575,8 @@ export default function AdminPlayersPage() {
                       : null
                     return (
                       <tr key={p.id} className={`border-b border-gray-50 hover:bg-gray-50 ${p.active ? '' : 'opacity-60'}`}>
-                        <td className="px-4 py-3 text-gray-400">{p.number ?? '—'}</td>
-                        <td className="px-4 py-3">
+                        <td className="px-2 py-2 sm:px-4 sm:py-3 text-gray-400">{p.number ?? '—'}</td>
+                        <td className="px-2 py-2 sm:px-4 sm:py-3">
                           <div className="flex items-center gap-2">
                             {p.photoUrl ? (
                               // eslint-disable-next-line @next/next/no-img-element
@@ -594,8 +594,8 @@ export default function AdminPlayersPage() {
                             )}
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-gray-500">{p.position ?? '—'}</td>
-                        <td className="px-4 py-3">
+                        <td className="px-2 py-2 sm:px-4 sm:py-3 text-gray-500">{p.position ?? '—'}</td>
+                        <td className="px-2 py-2 sm:px-4 sm:py-3">
                           {p.totalMatches === 0 ? (
                             <span className="text-xs text-gray-300">—</span>
                           ) : (
@@ -608,7 +608,7 @@ export default function AdminPlayersPage() {
                             </span>
                           )}
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-2 py-2 sm:px-4 sm:py-3">
                           {hasPhone ? (
                             <span
                               className="text-xs text-green-600 font-semibold"
@@ -620,7 +620,7 @@ export default function AdminPlayersPage() {
                             <span className="text-xs text-red-500 font-medium">✗ Sin número</span>
                           )}
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-2 py-2 sm:px-4 sm:py-3">
                           {p.leaguePlayerId ? (
                             <span className="text-xs text-green-600 font-semibold">✓ Vinculado</span>
                           ) : (
@@ -641,7 +641,7 @@ export default function AdminPlayersPage() {
                             </select>
                           )}
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-2 py-2 sm:px-4 sm:py-3">
                           <div className="flex justify-end gap-2">
                             <button onClick={() => startEdit(p)} className="text-xs px-3 py-1.5 rounded bg-navy text-cream hover:bg-navy-light">
                               Editar

@@ -47,7 +47,7 @@ export default async function AdminMatchesPage({ searchParams }: PageProps) {
   }
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <h1 className="text-2xl font-extrabold text-navy mb-6">Partidos</h1>
 
       <div className="flex gap-2 mb-6">
@@ -76,16 +76,16 @@ export default async function AdminMatchesPage({ searchParams }: PageProps) {
       {matches.length === 0 ? (
         <p className="text-gray-400 text-sm">No hay partidos en esta pestaña.</p>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-x-auto">
+          <table className="w-full text-xs sm:text-sm min-w-[800px]">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-100 text-gray-500 font-medium">
-                <th className="px-4 py-3 text-left">Fecha</th>
-                <th className="px-4 py-3 text-left">Partido</th>
-                <th className="px-4 py-3 text-left">Marcador</th>
-                <th className="px-4 py-3 text-left">Cancha</th>
-                <th className="px-4 py-3 text-left">Asistencia</th>
-                <th className="px-4 py-3"></th>
+                <th className="px-2 py-2 sm:px-4 sm:py-3 text-left">Fecha</th>
+                <th className="px-2 py-2 sm:px-4 sm:py-3 text-left">Partido</th>
+                <th className="px-2 py-2 sm:px-4 sm:py-3 text-left">Marcador</th>
+                <th className="px-2 py-2 sm:px-4 sm:py-3 text-left">Cancha</th>
+                <th className="px-2 py-2 sm:px-4 sm:py-3 text-left">Asistencia</th>
+                <th className="px-2 py-2 sm:px-4 sm:py-3"></th>
               </tr>
             </thead>
             <tbody>
@@ -94,7 +94,7 @@ export default async function AdminMatchesPage({ searchParams }: PageProps) {
                 const initialized = !!att && att.total > 0
                 return (
                 <tr key={m.id} className="border-b border-gray-50 hover:bg-gray-50">
-                  <td className="px-4 py-3 text-gray-600">
+                  <td className="px-2 py-2 sm:px-4 sm:py-3 text-gray-600">
                     {new Date(m.date).toLocaleString('es-CL', {
                       day: '2-digit',
                       month: '2-digit',
@@ -103,7 +103,7 @@ export default async function AdminMatchesPage({ searchParams }: PageProps) {
                       minute: '2-digit',
                     })}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-2 py-2 sm:px-4 sm:py-3">
                     <div className="flex items-center gap-2">
                       {m.homeTeam && (
                         <TeamLogo
@@ -126,13 +126,13 @@ export default async function AdminMatchesPage({ searchParams }: PageProps) {
                       )}
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-gray-600">
+                  <td className="px-2 py-2 sm:px-4 sm:py-3 text-gray-600">
                     {m.homeScore != null && m.awayScore != null
                       ? `${m.homeScore} - ${m.awayScore}`
                       : '—'}
                   </td>
-                  <td className="px-4 py-3 text-gray-500">{m.venue ?? '—'}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-2 py-2 sm:px-4 sm:py-3 text-gray-500">{m.venue ?? '—'}</td>
+                  <td className="px-2 py-2 sm:px-4 sm:py-3">
                     {!initialized ? (
                       <span className="text-gray-300">—</span>
                     ) : (
@@ -144,7 +144,7 @@ export default async function AdminMatchesPage({ searchParams }: PageProps) {
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-2 py-2 sm:px-4 sm:py-3 text-right">
                     <Link
                       href={`/admin/matches/${m.id}/attendance`}
                       className="text-xs px-3 py-1.5 rounded bg-navy text-cream hover:bg-navy-light"

@@ -237,7 +237,7 @@ export default function AdminNewsPage() {
   }
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-2xl font-extrabold text-navy">Noticias</h1>
         <button
@@ -262,33 +262,33 @@ export default function AdminNewsPage() {
       ) : articles.length === 0 ? (
         <p className="text-gray-400">No hay noticias. Ejecuta el scraper para generar noticias automáticamente.</p>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-x-auto">
+          <table className="w-full text-xs sm:text-sm min-w-[900px]">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-100">
-                <th className="px-4 py-3 text-left text-gray-500 font-medium">Título</th>
-                <th className="px-4 py-3 text-left text-gray-500 font-medium">Fecha</th>
-                <th className="px-4 py-3 text-left text-gray-500 font-medium">Estado</th>
-                <th className="px-4 py-3 text-left text-gray-500 font-medium">IA</th>
-                <th className="px-4 py-3 text-right text-gray-500 font-medium">Acciones</th>
+                <th className="px-2 py-2 sm:px-4 sm:py-3 text-left text-gray-500 font-medium">Título</th>
+                <th className="px-2 py-2 sm:px-4 sm:py-3 text-left text-gray-500 font-medium">Fecha</th>
+                <th className="px-2 py-2 sm:px-4 sm:py-3 text-left text-gray-500 font-medium">Estado</th>
+                <th className="px-2 py-2 sm:px-4 sm:py-3 text-left text-gray-500 font-medium">IA</th>
+                <th className="px-2 py-2 sm:px-4 sm:py-3 text-right text-gray-500 font-medium">Acciones</th>
               </tr>
             </thead>
             <tbody>
               {articles.map((a) => (
                 <tr key={a.id} className="border-b border-gray-50 hover:bg-gray-50">
-                  <td className="px-4 py-3 max-w-xs">
+                  <td className="px-2 py-2 sm:px-4 sm:py-3 max-w-xs">
                     <p className="font-medium text-navy truncate">{a.title}</p>
                   </td>
-                  <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
+                  <td className="px-2 py-2 sm:px-4 sm:py-3 text-gray-500 whitespace-nowrap">
                     {new Date(a.generatedAt).toLocaleDateString('es-CL')}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-2 py-2 sm:px-4 sm:py-3">
                     <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${a.published ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
                       {a.published ? 'Publicado' : 'Borrador'}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-gray-400 text-xs">{a.aiProvider}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-2 py-2 sm:px-4 sm:py-3 text-gray-400 text-xs">{a.aiProvider}</td>
+                  <td className="px-2 py-2 sm:px-4 sm:py-3">
                     <div className="flex justify-end gap-2 flex-wrap">
                       <button
                         onClick={() => togglePublish(a)}

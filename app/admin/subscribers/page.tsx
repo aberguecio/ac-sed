@@ -63,7 +63,7 @@ export default function AdminSubscribersPage() {
   }
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <h1 className="text-2xl font-extrabold text-navy mb-2">Suscriptores</h1>
       <p className="text-gray-400 text-sm mb-8">Personas suscritas al newsletter de AC SED.</p>
 
@@ -89,22 +89,22 @@ export default function AdminSubscribersPage() {
       ) : subscribers.length === 0 ? (
         <p className="text-gray-400">No hay suscriptores aún.</p>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-x-auto">
+          <table className="w-full text-xs sm:text-sm min-w-[700px]">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-100">
-                <th className="px-4 py-3 text-left text-gray-500 font-medium">Email</th>
-                <th className="px-4 py-3 text-left text-gray-500 font-medium">Origen</th>
-                <th className="px-4 py-3 text-left text-gray-500 font-medium">Suscrito el</th>
-                <th className="px-4 py-3 text-left text-gray-500 font-medium">Estado</th>
-                <th className="px-4 py-3 text-right text-gray-500 font-medium">Acciones</th>
+                <th className="px-2 py-2 sm:px-4 sm:py-3 text-left text-gray-500 font-medium">Email</th>
+                <th className="px-2 py-2 sm:px-4 sm:py-3 text-left text-gray-500 font-medium">Origen</th>
+                <th className="px-2 py-2 sm:px-4 sm:py-3 text-left text-gray-500 font-medium">Suscrito el</th>
+                <th className="px-2 py-2 sm:px-4 sm:py-3 text-left text-gray-500 font-medium">Estado</th>
+                <th className="px-2 py-2 sm:px-4 sm:py-3 text-right text-gray-500 font-medium">Acciones</th>
               </tr>
             </thead>
             <tbody>
               {subscribers.map((s) => (
                 <tr key={s.id} className="border-b border-gray-50 hover:bg-gray-50">
-                  <td className="px-4 py-3 text-navy font-medium">{s.email}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-2 py-2 sm:px-4 sm:py-3 text-navy font-medium">{s.email}</td>
+                  <td className="px-2 py-2 sm:px-4 sm:py-3">
                     {s.source === 'player' ? (
                       <span className="inline-block px-2 py-0.5 rounded text-xs font-semibold bg-blue-100 text-blue-700">
                         Jugador{s.playerName ? `: ${s.playerName}` : ''}
@@ -115,15 +115,15 @@ export default function AdminSubscribersPage() {
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
+                  <td className="px-2 py-2 sm:px-4 sm:py-3 text-gray-500 whitespace-nowrap">
                     {s.source === 'player' ? '-' : new Date(s.subscribedAt).toLocaleDateString('es-CL')}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-2 py-2 sm:px-4 sm:py-3">
                     <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${s.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
                       {s.active ? 'Activo' : 'Inactivo'}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-2 py-2 sm:px-4 sm:py-3 text-right">
                     {s.id < 0 ? (
                       <button
                         onClick={() => addToSubscribers(s.email)}

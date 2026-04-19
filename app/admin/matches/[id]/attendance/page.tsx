@@ -41,7 +41,7 @@ export default async function AttendancePage({ params }: PageProps) {
   const hasAnyRow = playerMatches.length > 0
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <Link href="/admin/matches" className="text-xs text-gray-500 hover:text-navy mb-2 inline-block">
         ← Volver a partidos
       </Link>
