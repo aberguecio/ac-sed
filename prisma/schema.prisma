@@ -410,3 +410,11 @@ model WhatsappMessage {
   @@index([timestamp])
   @@index([senderJid, createdAt])
 }
+
+// Singleton runtime config for the AI bot. Toggled from the admin panel.
+// Only one row ever (id = 1).
+model BotConfig {
+  id         Int      @id @default(1)
+  aiAllowDms Boolean  @default(false)
+  updatedAt  DateTime @updatedAt
+}

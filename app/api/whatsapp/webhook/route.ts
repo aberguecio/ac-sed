@@ -8,6 +8,7 @@ import {
 } from '@/lib/whatsapp'
 import { scheduleGroupSummary } from '@/lib/attendance-notifier'
 import { answerGroupQuestion } from '@/lib/ai-whatsapp-agent'
+import { getBotConfig } from '@/lib/bot-config'
 
 const GROUP_SUMMARY_DELAY_MS = 5 * 60 * 1000
 const AI_RATE_LIMIT_MS = 10 * 1000
@@ -33,6 +34,16 @@ export async function POST(req: Request) {
 
   const vote = provider.parsePollVote(payload)
   if (vote) return handlePollVote(vote)
+
+  // TEMP DEBUG — dump raw message object for incoming-text events so we can
+  // find where Evolution puts mention metadata in LID-mode groups.
+  const p = payload as { event?: string; data?: { message?: unknown; key?: unknown } }
+  if (p?.event === 'messages.upsert') {
+    console.log('[whatsapp webhook] raw messages.upsert', JSON.stringify({
+      key: p.data?.key,
+      message: p.data?.message,
+    }, null, 2))
+  }
 
   const text = provider.parseIncomingText(payload)
   if (text) {
@@ -119,19 +130,26 @@ async function handleIncomingText(text: IncomingText): Promise<Record<string, un
   if (text.fromMe) return { ok: true, handled: false, reason: 'self' }
 
   const groupJid = process.env.WHATSAPP_ATTENDANCE_GROUP_JID
-  if (!groupJid || text.remoteJid !== groupJid) {
-    return { ok: true, handled: false, reason: 'not-target-group' }
+  const isTargetGroup = !!groupJid && text.remoteJid === groupJid
+  const isDM = !text.isGroup
+
+  // DMs are gated by the admin-panel toggle; group messages always pass this check.
+  if (!isTargetGroup) {
+    if (!isDM) return { ok: true, handled: false, reason: 'not-target-group' }
+    const config = await getBotConfig()
+    if (!config.aiAllowDms) return { ok: true, handled: false, reason: 'dm-disabled' }
   }
 
-  const botJid = process.env.WHATSAPP_BOT_JID
-  console.log('[whatsapp ai] mention check', {
-    senderJid: text.senderJid,
-    mentionedJid: text.mentionedJid,
-    botJid: botJid ?? '(unset)',
-    textPreview: text.text.slice(0, 120),
-  })
-  if (!botJid || !text.mentionedJid.includes(botJid)) {
-    return { ok: true, handled: false, reason: 'not-mentioned' }
+  // Mention requirement only applies in the group. In DM debug mode any message counts.
+  if (text.isGroup) {
+    const botJid = process.env.WHATSAPP_BOT_JID
+    if (!botJid) return { ok: true, handled: false, reason: 'bot-jid-unset' }
+    const botId = botJid.split('@')[0] ?? ''
+    const mentionedFormally = text.mentionedJid.includes(botJid)
+    const mentionedInText = botId.length > 0 && new RegExp(`@${botId}\\b`).test(text.text)
+    if (!mentionedFormally && !mentionedInText) {
+      return { ok: true, handled: false, reason: 'not-mentioned' }
+    }
   }
 
   const existing = await prisma.whatsappMessage.findUnique({
@@ -140,12 +158,12 @@ async function handleIncomingText(text: IncomingText): Promise<Record<string, un
   })
   if (existing) return { ok: true, duplicate: true }
 
-  if (text.senderJid) {
+  const rateLimitKey = text.senderJid ?? text.remoteJid
+  if (rateLimitKey) {
     const recent = await prisma.whatsappMessage.findFirst({
       where: {
-        senderJid: text.senderJid,
+        senderJid: rateLimitKey,
         direction: 'INBOUND',
-        groupJid,
         createdAt: { gte: new Date(Date.now() - AI_RATE_LIMIT_MS) },
       },
       select: { id: true },
@@ -153,7 +171,8 @@ async function handleIncomingText(text: IncomingText): Promise<Record<string, un
     if (recent) return { ok: true, handled: false, reason: 'rate-limited' }
   }
 
-  const phone = text.senderJid ? normalizeInboundPhone(stripJidToPhone(text.senderJid)) : null
+  const senderForLookup = text.senderJid ?? (isDM ? text.remoteJid : null)
+  const phone = senderForLookup ? normalizeInboundPhone(stripJidToPhone(senderForLookup)) : null
   const player = phone
     ? await prisma.player.findFirst({
         where: { phoneNumber: phone },
@@ -164,8 +183,8 @@ async function handleIncomingText(text: IncomingText): Promise<Record<string, un
   await prisma.whatsappMessage.create({
     data: {
       playerId: player?.id ?? null,
-      groupJid,
-      senderJid: text.senderJid,
+      groupJid: text.isGroup ? text.remoteJid : null,
+      senderJid: rateLimitKey,
       direction: 'INBOUND',
       content: text.text,
       providerMessageId: text.eventId,
@@ -185,11 +204,11 @@ async function handleIncomingText(text: IncomingText): Promise<Record<string, un
   if (!answer) return { ok: true, handled: false, reason: 'empty-answer' }
 
   try {
-    const sent = await getWhatsappProvider().sendText(groupJid, answer, AI_REPLY_TYPING_MS)
+    const sent = await getWhatsappProvider().sendText(text.remoteJid, answer, AI_REPLY_TYPING_MS)
     await prisma.whatsappMessage.create({
       data: {
         playerId: null,
-        groupJid,
+        groupJid: text.isGroup ? text.remoteJid : null,
         senderJid: null,
         direction: 'OUTBOUND',
         content: answer,

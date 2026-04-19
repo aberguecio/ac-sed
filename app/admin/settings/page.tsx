@@ -1,14 +1,28 @@
-export default function AdminSettingsPage() {
+import { getBotConfig } from '@/lib/bot-config'
+import { BotDmToggle } from './bot-dm-toggle'
+
+export const dynamic = 'force-dynamic'
+
+export default async function AdminSettingsPage() {
   const provider = process.env.AI_PROVIDER ?? 'openai'
   const model = process.env.AI_MODEL ?? '(default)'
   const hasKey = !!(process.env.AI_API_KEY?.length)
+  const botConfig = await getBotConfig()
 
   return (
-    <div className="p-8">
-      <h1 className="text-2xl font-extrabold text-navy mb-2">Configuración</h1>
-      <p className="text-gray-500 text-sm mb-8">
-        Para cambiar la configuración editá el archivo <code className="bg-gray-100 px-1 rounded">.env</code> y reiniciá el contenedor.
-      </p>
+    <div className="p-8 space-y-8">
+      <div>
+        <h1 className="text-2xl font-extrabold text-navy mb-2">Configuración</h1>
+        <p className="text-gray-500 text-sm">
+          Variables de IA: editá <code className="bg-gray-100 px-1 rounded">.env</code> y reiniciá el contenedor.
+          Los toggles de abajo se guardan en la DB y se aplican al instante.
+        </p>
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 max-w-lg">
+        <h2 className="font-bold text-navy mb-4">Bot de WhatsApp</h2>
+        <BotDmToggle initial={botConfig.aiAllowDms} />
+      </div>
 
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 max-w-lg space-y-4">
         <h2 className="font-bold text-navy mb-2">Proveedor de IA</h2>
