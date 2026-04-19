@@ -124,6 +124,12 @@ async function handleIncomingText(text: IncomingText): Promise<Record<string, un
   }
 
   const botJid = process.env.WHATSAPP_BOT_JID
+  console.log('[whatsapp ai] mention check', {
+    senderJid: text.senderJid,
+    mentionedJid: text.mentionedJid,
+    botJid: botJid ?? '(unset)',
+    textPreview: text.text.slice(0, 120),
+  })
   if (!botJid || !text.mentionedJid.includes(botJid)) {
     return { ok: true, handled: false, reason: 'not-mentioned' }
   }
