@@ -26,21 +26,40 @@ export interface AnswerGroupQuestionResult {
   finishReason: string
 }
 
+const FALLBACK_ANSWER = 'Uy, no pude procesar bien esa pregunta. ¿Podés reformularla?'
+
 export async function answerGroupQuestion(
   question: string
 ): Promise<AnswerGroupQuestionResult> {
-  const { text, toolCalls, finishReason } = await generateText({
-    model: getModel(),
-    system: SYSTEM_PROMPT,
-    prompt: question,
-    tools: whatsappAgentTools,
-    maxSteps: 8,
-    maxTokens: 600,
-  })
-
-  return {
-    answer: text.trim(),
-    toolCalls: toolCalls?.length ?? 0,
-    finishReason,
+  try {
+    const { text, toolCalls, finishReason } = await generateText({
+      model: getModel(),
+      system: SYSTEM_PROMPT,
+      prompt: question,
+      tools: whatsappAgentTools,
+      maxSteps: 8,
+      maxTokens: 600,
+    })
+    return {
+      answer: text.trim() || FALLBACK_ANSWER,
+      toolCalls: toolCalls?.length ?? 0,
+      finishReason,
+    }
+  } catch (err) {
+    logAgentError(err)
+    return { answer: FALLBACK_ANSWER, toolCalls: 0, finishReason: 'error' }
   }
+}
+
+function logAgentError(err: unknown): void {
+  if (!(err instanceof Error)) {
+    console.error('[whatsapp ai] generation failed:', String(err))
+    return
+  }
+  const e = err as Error & { toolName?: string; toolArgs?: string }
+  const parts = [`name=${e.name}`]
+  if (e.toolName) parts.push(`tool=${e.toolName}`)
+  if (e.toolArgs) parts.push(`args=${e.toolArgs}`)
+  parts.push(`msg=${e.message.split('\n')[0].slice(0, 200)}`)
+  console.error('[whatsapp ai] generation failed', parts.join(' '))
 }

@@ -259,6 +259,34 @@ export const getLastPlayedMatchTool = tool({
   },
 })
 
+export const listRosterTool = tool({
+  description:
+    'Lista el plantel de AC SED (todos los jugadores del roster). Filtros: position, activeOnly. NUNCA devuelve teléfonos. Útil cuando te preguntan "quiénes son los jugadores", "qué arqueros hay", "cuántos somos", etc.',
+  parameters: z.object({
+    position: z.string().nullish().describe('Filtrar por posición exacta (arquero, defensa, mediocampista, delantero…).'),
+    activeOnly: z.boolean().nullish().describe('Si true, solo jugadores activos. Default true.'),
+  }),
+  execute: async ({ position, activeOnly }) => {
+    const where: Record<string, unknown> = {}
+    if (position) where.position = { equals: position, mode: 'insensitive' }
+    if (activeOnly !== false) where.active = true
+
+    const players = await prisma.player.findMany({
+      where,
+      select: {
+        id: true,
+        name: true,
+        nicknames: true,
+        position: true,
+        number: true,
+        active: true,
+      },
+      orderBy: [{ number: 'asc' }, { name: 'asc' }],
+    })
+    return { count: players.length, players }
+  },
+})
+
 export const searchPlayerTool = tool({
   description:
     'Busca jugador del roster por nombre o apodo (fuzzy, case-insensitive). Devuelve id + nombre + apodos. NUNCA expone teléfonos.',
@@ -431,6 +459,51 @@ export const getHeadToHeadTool = tool({
     return {
       record: { played: matches.length, wins, draws, losses },
       matches: matches.map(summarizeMatch),
+    }
+  },
+})
+
+export const listTournamentsTool = tool({
+  description:
+    'Lista todos los torneos guardados (id, nombre, si está activo, fases, rango de fechas y total de partidos). Útil para mapear "Apertura 2025" o "el torneo pasado" a un tournamentId antes de llamar otras tools.',
+  parameters: z.object({
+    activeOnly: z.boolean().nullish().describe('Si true, solo torneos con isActive=true.'),
+  }),
+  execute: async ({ activeOnly }) => {
+    const tournaments = await prisma.tournament.findMany({
+      where: activeOnly ? { isActive: true } : undefined,
+      include: {
+        stages: {
+          select: { id: true, name: true, orderIndex: true },
+          orderBy: { orderIndex: 'asc' },
+        },
+      },
+      orderBy: { id: 'desc' },
+    })
+
+    const ranges = await prisma.match.groupBy({
+      by: ['tournamentId'],
+      _min: { date: true },
+      _max: { date: true },
+      _count: { _all: true },
+    })
+    const rangeById = new Map(
+      ranges.map(r => [r.tournamentId, {
+        firstMatch: r._min.date?.toISOString() ?? null,
+        lastMatch: r._max.date?.toISOString() ?? null,
+        totalMatches: r._count._all,
+      }])
+    )
+
+    return {
+      count: tournaments.length,
+      tournaments: tournaments.map(t => ({
+        id: t.id,
+        name: t.name,
+        isActive: t.isActive,
+        stages: t.stages,
+        ...(rangeById.get(t.id) ?? { firstMatch: null, lastMatch: null, totalMatches: 0 }),
+      })),
     }
   },
 })
@@ -648,10 +721,12 @@ export const whatsappAgentTools = {
   getMatchGoals: getMatchGoalsTool,
   getNextMatch: getNextMatchTool,
   getLastPlayedMatch: getLastPlayedMatchTool,
+  listRoster: listRosterTool,
   searchPlayer: searchPlayerTool,
   getTopScorers: getTopScorersTool,
   getPlayerSeasonStats: getPlayerSeasonStatsTool,
   getHeadToHead: getHeadToHeadTool,
+  listTournaments: listTournamentsTool,
   getTournamentInfo: getTournamentInfoTool,
   getCurrentStandings: getCurrentStandingsTool,
   getRemainingFixtures: getRemainingFixturesTool,

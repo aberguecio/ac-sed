@@ -35,16 +35,6 @@ export async function POST(req: Request) {
   const vote = provider.parsePollVote(payload)
   if (vote) return handlePollVote(vote)
 
-  // TEMP DEBUG — dump raw message object for incoming-text events so we can
-  // find where Evolution puts mention metadata in LID-mode groups.
-  const p = payload as { event?: string; data?: { message?: unknown; key?: unknown } }
-  if (p?.event === 'messages.upsert') {
-    console.log('[whatsapp webhook] raw messages.upsert', JSON.stringify({
-      key: p.data?.key,
-      message: p.data?.message,
-    }, null, 2))
-  }
-
   const text = provider.parseIncomingText(payload)
   if (text) {
     const result = await handleIncomingText(text)
