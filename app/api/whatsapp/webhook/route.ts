@@ -182,9 +182,11 @@ async function handleIncomingText(text: IncomingText): Promise<Record<string, un
     },
   })
 
+  const cleanedQuestion = stripBotMention(text.text)
+
   let answer: string
   try {
-    const result = await answerGroupQuestion(text.text)
+    const result = await answerGroupQuestion(cleanedQuestion)
     answer = result.answer
   } catch (err) {
     console.error('[whatsapp ai] generation failed', err)
@@ -217,4 +219,14 @@ async function handleIncomingText(text: IncomingText): Promise<Record<string, un
 function stripJidToPhone(jid: string): string {
   const at = jid.indexOf('@')
   return at === -1 ? jid : jid.slice(0, at)
+}
+
+// Strips the bot's own @<botId> mention so the LLM doesn't read the digits
+// as an integer id and pass them to a tool (which overflows INT4).
+function stripBotMention(text: string): string {
+  const botJid = process.env.WHATSAPP_BOT_JID
+  if (!botJid) return text
+  const botId = botJid.split('@')[0] ?? ''
+  if (!botId) return text
+  return text.replace(new RegExp(`@${botId}\\b`, 'g'), '').replace(/\s{2,}/g, ' ').trim()
 }
