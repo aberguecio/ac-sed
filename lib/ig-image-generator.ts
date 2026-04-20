@@ -7,6 +7,7 @@ import {
   createPlaceholderLogo,
 } from './vs-image-generator'
 import { isACSED } from './team-utils'
+import { TITLE_FONT, BODY_FONT, textAttrs } from './fonts'
 
 export type { TeamInfo }
 
@@ -83,8 +84,19 @@ function getDefaultTemplatePath(): string {
 
 function svgTitle(title: string): string {
   return `
-    <text x="${SIZE / 2}" y="115" font-family="Arial" font-size="42" font-weight="bold"
-          fill="${WHEAT}" text-anchor="middle" letter-spacing="6">${escapeXml(title)}</text>
+    ${textNode({
+      x: SIZE / 2,
+      y: 115,
+      text: escapeXml(title),
+      attrs: textAttrs({
+        family: TITLE_FONT,
+        size: 42,
+        weight: 'bold',
+        fill: WHEAT,
+        letterSpacing: 1,
+        anchor: 'middle',
+      }),
+    })}
     <rect x="100" y="135" width="${SIZE - 200}" height="3" fill="${WHEAT}" opacity="0.6"/>
   `
 }
@@ -92,11 +104,30 @@ function svgTitle(title: string): string {
 function svgFooter(): string {
   return `
     <rect x="100" y="${SIZE - 150}" width="${SIZE - 200}" height="3" fill="${WHEAT}" opacity="0.6"/>
-    <text x="${SIZE / 2}" y="${SIZE - 120}" font-family="Arial" font-size="18"
-          fill="${WHEAT_LIGHT}" text-anchor="middle" letter-spacing="3" opacity="0.8">
-      AC SED | LIGA B
-    </text>
+    ${textNode({
+      x: SIZE / 2,
+      y: SIZE - 120,
+      text: 'AC SED | LIGA B',
+      attrs: textAttrs({
+        family: BODY_FONT,
+        size: 18,
+        fill: WHEAT_LIGHT,
+        letterSpacing: 1,
+        anchor: 'middle',
+        opacity: 0.8,
+      }),
+    })}
   `
+}
+
+interface TextNodeArgs {
+  x: number
+  y: number
+  text: string
+  attrs: string
+}
+function textNode({ x, y, text, attrs }: TextNodeArgs): string {
+  return `<text x="${x}" y="${y}" ${attrs}>${text}</text>`
 }
 
 async function getFooterLogo(): Promise<{ logo: Buffer; top: number; left: number } | null> {
@@ -111,7 +142,7 @@ async function getFooterLogo(): Promise<{ logo: Buffer; top: number; left: numbe
 export async function generateResultImage(
   background: string | Buffer | null,
   homeTeam: TeamInfo,
-  awayTeam: TeamInfo
+  awayTeam: TeamInfo,
 ): Promise<Buffer> {
   const bg = await loadBackground(background || getDefaultTemplatePath())
   const logoSize = 240
@@ -146,60 +177,73 @@ export async function generateResultImage(
 
   // Corner accent length
   const cLen = 60
-  const cOff = 50 // offset from edge
-  const cW = 3    // stroke width
+  const cOff = 50
+  const cW = 3
 
   const overlay = `
     <svg width="${SIZE}" height="${SIZE}" xmlns="http://www.w3.org/2000/svg">
       <defs>
-        <!-- Radial gradient: darker center for score readability, lighter edges to show background -->
         <radialGradient id="grad" cx="50%" cy="50%" r="70%">
           <stop offset="0%" stop-color="${NAVY}" stop-opacity="0.8"/>
           <stop offset="100%" stop-color="${NAVY}" stop-opacity="0.5"/>
         </radialGradient>
       </defs>
 
-      <!-- Gradient overlay -->
       <rect width="${SIZE}" height="${SIZE}" fill="url(#grad)"/>
 
-      <!-- Corner accents (top-left) -->
+      <!-- Corner accents -->
       <line x1="${cOff}" y1="${cOff}" x2="${cOff + cLen}" y2="${cOff}" stroke="${WHEAT}" stroke-width="${cW}" opacity="0.7"/>
       <line x1="${cOff}" y1="${cOff}" x2="${cOff}" y2="${cOff + cLen}" stroke="${WHEAT}" stroke-width="${cW}" opacity="0.7"/>
-      <!-- Corner accents (top-right) -->
       <line x1="${SIZE - cOff}" y1="${cOff}" x2="${SIZE - cOff - cLen}" y2="${cOff}" stroke="${WHEAT}" stroke-width="${cW}" opacity="0.7"/>
       <line x1="${SIZE - cOff}" y1="${cOff}" x2="${SIZE - cOff}" y2="${cOff + cLen}" stroke="${WHEAT}" stroke-width="${cW}" opacity="0.7"/>
-      <!-- Corner accents (bottom-left) -->
       <line x1="${cOff}" y1="${SIZE - cOff}" x2="${cOff + cLen}" y2="${SIZE - cOff}" stroke="${WHEAT}" stroke-width="${cW}" opacity="0.7"/>
       <line x1="${cOff}" y1="${SIZE - cOff}" x2="${cOff}" y2="${SIZE - cOff - cLen}" stroke="${WHEAT}" stroke-width="${cW}" opacity="0.7"/>
-      <!-- Corner accents (bottom-right) -->
       <line x1="${SIZE - cOff}" y1="${SIZE - cOff}" x2="${SIZE - cOff - cLen}" y2="${SIZE - cOff}" stroke="${WHEAT}" stroke-width="${cW}" opacity="0.7"/>
       <line x1="${SIZE - cOff}" y1="${SIZE - cOff}" x2="${SIZE - cOff}" y2="${SIZE - cOff - cLen}" stroke="${WHEAT}" stroke-width="${cW}" opacity="0.7"/>
 
       ${svgTitle('RESULTADO')}
 
-      <!-- Score (+300) -->
-      <text x="${SIZE / 2 - 85}" y="560" font-family="Arial" font-size="120"
-            font-weight="bold" fill="${CREAM}" text-anchor="middle">${homeScore}</text>
-      <text x="${SIZE / 2}" y="540" font-family="Arial" font-size="44"
-            font-weight="bold" fill="${WHEAT}" text-anchor="middle" opacity="0.8">-</text>
-      <text x="${SIZE / 2 + 85}" y="560" font-family="Arial" font-size="120"
-            font-weight="bold" fill="${CREAM}" text-anchor="middle">${awayScore}</text>
+      <!-- Score: body font at weight 400 (Boldonse has no bold cut; faux-bold is too heavy at 120px). -->
+      ${textNode({
+        x: SIZE / 2 - 85,
+        y: 560,
+        text: String(homeScore),
+        attrs: textAttrs({ family: BODY_FONT, size: 120, weight: 400, fill: CREAM, anchor: 'middle' }),
+      })}
+      ${textNode({
+        x: SIZE / 2,
+        y: 540,
+        text: '-',
+        attrs: textAttrs({ family: BODY_FONT, size: 44, weight: 400, fill: WHEAT, anchor: 'middle', opacity: 0.8 }),
+      })}
+      ${textNode({
+        x: SIZE / 2 + 85,
+        y: 560,
+        text: String(awayScore),
+        attrs: textAttrs({ family: BODY_FONT, size: 120, weight: 400, fill: CREAM, anchor: 'middle' }),
+      })}
 
-      <!-- Team names (+200) -->
-      <text x="${SIZE / 2 - 270}" y="670" font-family="Arial" font-size="34"
-            font-weight="bold" fill="${CREAM}" text-anchor="middle">
-        ${escapeXml(homeTeam.name.toUpperCase())}
-      </text>
-      <text x="${SIZE / 2 + 270}" y="670" font-family="Arial" font-size="34"
-            font-weight="bold" fill="${CREAM}" text-anchor="middle">
-        ${escapeXml(awayTeam.name.toUpperCase())}
-      </text>
+      <!-- Team names -->
+      ${textNode({
+        x: SIZE / 2 - 270,
+        y: 670,
+        text: escapeXml(homeTeam.name.toUpperCase()),
+        attrs: textAttrs({ family: BODY_FONT, size: 34, weight: 'bold', fill: CREAM, anchor: 'middle' }),
+      })}
+      ${textNode({
+        x: SIZE / 2 + 270,
+        y: 670,
+        text: escapeXml(awayTeam.name.toUpperCase()),
+        attrs: textAttrs({ family: BODY_FONT, size: 34, weight: 'bold', fill: CREAM, anchor: 'middle' }),
+      })}
 
-      <!-- Subtitle phrase (+200) -->
-      <text x="${SIZE / 2}" y="760" font-family="Arial" font-size="28"
-            fill="${WHEAT}" text-anchor="middle" letter-spacing="3" opacity="0.9">
-        ${escapeXml(headline)}
-      </text>
+      <!-- Subtitle phrase -->
+      ${textNode({
+        x: SIZE / 2,
+        y: 760,
+        text: escapeXml(headline),
+        attrs: textAttrs({ family: BODY_FONT, size: 28, fill: WHEAT, letterSpacing: 1, anchor: 'middle', opacity: 0.9 }),
+      })}
 
       ${svgFooter()}
     </svg>
@@ -209,21 +253,10 @@ export async function generateResultImage(
 
   const composites: sharp.OverlayOptions[] = [
     { input: overlaySvg, top: 0, left: 0 },
-    // Home team logo (+200)
-    {
-      input: homeLogo,
-      top: 370,
-      left: Math.floor(SIZE / 2 - 270 - logoSize / 2),
-    },
-    // Away team logo (+200)
-    {
-      input: awayLogo,
-      top: 370,
-      left: Math.floor(SIZE / 2 + 270 - logoSize / 2),
-    },
+    { input: homeLogo, top: 370, left: Math.floor(SIZE / 2 - 270 - logoSize / 2) },
+    { input: awayLogo, top: 370, left: Math.floor(SIZE / 2 + 270 - logoSize / 2) },
   ]
 
-  // Beers icons flanking the subtitle phrase (y=760, 50px icons)
   if (beersIcon) {
     composites.push(
       { input: beersIcon, top: 718, left: 200 },
@@ -263,64 +296,80 @@ interface ScorerInfo {
 export async function generateStandingsImage(
   background: string | Buffer | null,
   standings: StandingsRow[],
-  scorers: ScorerInfo[]
+  scorers: ScorerInfo[],
 ): Promise<Buffer> {
   const [bg, footerLogo] = await Promise.all([
     loadBackground(background || getDefaultTemplatePath()),
     getFooterLogo(),
   ])
 
-  // Table pushed down: header at 130, gap before first row
   const rowHeight = 42
   const tableStartY = 250
   const headerY = 195
-
-  // Column positions
   const colPos = { pos: 120, name: 170, pj: 620, pg: 690, pe: 760, pp: 830, pts: 920 }
 
   let tableRows = ''
   standings.forEach((row, i) => {
     const y = tableStartY + i * rowHeight
     const rowBg = row.isACSED
-      ? `<rect x="80" y="${y - 28}" width="${SIZE - 160}" height="${rowHeight}" rx="4" fill="${WHEAT}" opacity="0.3"/>`
+      ? `<rect x="80" y="${y - 33}" width="${SIZE - 160}" height="${rowHeight}" rx="4" fill="${WHEAT}" opacity="0.3"/>`
       : ''
     const textColor = row.isACSED ? WHEAT : CREAM
-    const weight = row.isACSED ? 'bold' : 'normal'
+    const weight: 'bold' | 'normal' = row.isACSED ? 'bold' : 'normal'
+    const mk = (size: number, w: 'bold' | 'normal', anchor?: 'start' | 'middle' | 'end') =>
+      textAttrs({ family: BODY_FONT, size, weight: w, fill: textColor, anchor })
 
     tableRows += `
       ${rowBg}
-      <text x="${colPos.pos}" y="${y}" font-family="Arial" font-size="20" fill="${textColor}" font-weight="${weight}" text-anchor="middle">${row.position}</text>
-      <text x="${colPos.name}" y="${y}" font-family="Arial" font-size="20" fill="${textColor}" font-weight="${weight}">${escapeXml(row.teamName)}</text>
-      <text x="${colPos.pj}" y="${y}" font-family="Arial" font-size="20" fill="${textColor}" font-weight="${weight}" text-anchor="middle">${row.played}</text>
-      <text x="${colPos.pg}" y="${y}" font-family="Arial" font-size="20" fill="${textColor}" font-weight="${weight}" text-anchor="middle">${row.won}</text>
-      <text x="${colPos.pe}" y="${y}" font-family="Arial" font-size="20" fill="${textColor}" font-weight="${weight}" text-anchor="middle">${row.drawn}</text>
-      <text x="${colPos.pp}" y="${y}" font-family="Arial" font-size="20" fill="${textColor}" font-weight="${weight}" text-anchor="middle">${row.lost}</text>
-      <text x="${colPos.pts}" y="${y}" font-family="Arial" font-size="22" fill="${textColor}" font-weight="bold" text-anchor="middle">${row.points}</text>
+      ${textNode({ x: colPos.pos, y, text: String(row.position), attrs: mk(20, weight, 'middle') })}
+      ${textNode({ x: colPos.name, y, text: escapeXml(row.teamName), attrs: mk(20, weight, 'start') })}
+      ${textNode({ x: colPos.pj, y, text: String(row.played), attrs: mk(20, weight, 'middle') })}
+      ${textNode({ x: colPos.pg, y, text: String(row.won), attrs: mk(20, weight, 'middle') })}
+      ${textNode({ x: colPos.pe, y, text: String(row.drawn), attrs: mk(20, weight, 'middle') })}
+      ${textNode({ x: colPos.pp, y, text: String(row.lost), attrs: mk(20, weight, 'middle') })}
+      ${textNode({ x: colPos.pts, y, text: String(row.points), attrs: mk(22, 'bold', 'middle') })}
     `
   })
 
-  // Scorers section
   const scorersStartY = tableStartY + standings.length * rowHeight + 60
   let scorersSection = ''
   if (scorers.length > 0) {
     scorersSection = `
       <rect x="80" y="${scorersStartY - 10}" width="${SIZE - 160}" height="3" fill="${WHEAT}" opacity="0.4"/>
-      <text x="${SIZE / 2}" y="${scorersStartY + 35}" font-family="Arial" font-size="24" font-weight="bold"
-            fill="${WHEAT}" text-anchor="middle" letter-spacing="4">GOLEADORES</text>
+      ${textNode({
+        x: SIZE / 2,
+        y: scorersStartY + 35,
+        text: 'GOLEADORES',
+        attrs: textAttrs({ family: TITLE_FONT, size: 24, weight: 'bold', fill: WHEAT, anchor: 'middle' }),
+      })}
     `
     scorers.forEach((scorer, i) => {
       const y = scorersStartY + 75 + i * 36
       const minuteStr = scorer.minute ? ` (${scorer.minute}')` : ''
       scorersSection += `
-        <text x="200" y="${y}" font-family="Arial" font-size="20" fill="${CREAM}">
-          ${escapeXml(scorer.name)}${minuteStr}
-        </text>
-        <text x="${SIZE - 200}" y="${y}" font-family="Arial" font-size="20" fill="${WHEAT}" font-weight="bold" text-anchor="end">
-          ${scorer.goals} ${scorer.goals === 1 ? 'gol' : 'goles'}
-        </text>
+        ${textNode({
+          x: 200,
+          y,
+          text: `${escapeXml(scorer.name)}${minuteStr}`,
+          attrs: textAttrs({ family: BODY_FONT, size: 20, fill: CREAM }),
+        })}
+        ${textNode({
+          x: SIZE - 200,
+          y,
+          text: `${scorer.goals} ${scorer.goals === 1 ? 'gol' : 'goles'}`,
+          attrs: textAttrs({ family: BODY_FONT, size: 20, weight: 'bold', fill: WHEAT, anchor: 'end' }),
+        })}
       `
     })
   }
+
+  const header = (x: number, text: string, anchor: 'start' | 'middle') =>
+    textNode({
+      x,
+      y: headerY,
+      text,
+      attrs: textAttrs({ family: BODY_FONT, size: 20, weight: 'bold', fill: WHEAT, anchor }),
+    })
 
   const overlay = `
     <svg width="${SIZE}" height="${SIZE}" xmlns="http://www.w3.org/2000/svg">
@@ -328,21 +377,18 @@ export async function generateStandingsImage(
 
       ${svgTitle('TABLA DE POSICIONES')}
 
-      <!-- Table column headers (bigger, bolder) -->
-      <text x="${colPos.pos}" y="${headerY}" font-family="Arial" font-size="20" fill="${WHEAT}" font-weight="bold" text-anchor="middle">#</text>
-      <text x="${colPos.name}" y="${headerY}" font-family="Arial" font-size="20" fill="${WHEAT}" font-weight="bold">Equipo</text>
-      <text x="${colPos.pj}" y="${headerY}" font-family="Arial" font-size="20" fill="${WHEAT}" font-weight="bold" text-anchor="middle">PJ</text>
-      <text x="${colPos.pg}" y="${headerY}" font-family="Arial" font-size="20" fill="${WHEAT}" font-weight="bold" text-anchor="middle">G</text>
-      <text x="${colPos.pe}" y="${headerY}" font-family="Arial" font-size="20" fill="${WHEAT}" font-weight="bold" text-anchor="middle">E</text>
-      <text x="${colPos.pp}" y="${headerY}" font-family="Arial" font-size="20" fill="${WHEAT}" font-weight="bold" text-anchor="middle">P</text>
-      <text x="${colPos.pts}" y="${headerY}" font-family="Arial" font-size="20" fill="${WHEAT}" font-weight="bold" text-anchor="middle">Pts</text>
+      ${header(colPos.pos, '#', 'middle')}
+      ${header(colPos.name, 'Equipo', 'start')}
+      ${header(colPos.pj, 'PJ', 'middle')}
+      ${header(colPos.pg, 'G', 'middle')}
+      ${header(colPos.pe, 'E', 'middle')}
+      ${header(colPos.pp, 'P', 'middle')}
+      ${header(colPos.pts, 'Pts', 'middle')}
 
       <rect x="80" y="${headerY + 12}" width="${SIZE - 160}" height="1" fill="${CREAM}" opacity="0.3"/>
 
       ${tableRows}
-
       ${scorersSection}
-
       ${svgFooter()}
     </svg>
   `
@@ -350,7 +396,6 @@ export async function generateStandingsImage(
   const composites: sharp.OverlayOptions[] = [
     { input: Buffer.from(overlay), top: 0, left: 0 },
   ]
-
   if (footerLogo) {
     composites.push({ input: footerLogo.logo, top: footerLogo.top, left: footerLogo.left })
   }
@@ -368,7 +413,7 @@ export async function generatePromoImage(
   homeTeam: TeamInfo,
   awayTeam: TeamInfo,
   matchDate: Date,
-  venue?: string | null
+  venue?: string | null,
 ): Promise<Buffer> {
   const bg = await loadBackground(background || getDefaultTemplatePath())
   const logoSize = 260
@@ -396,39 +441,60 @@ export async function generatePromoImage(
   })
 
   const venueStr = venue ? escapeXml(venue.toUpperCase()) : ''
-
-  // Logos + names zone centered vertically but shifted up
   const centerY = SIZE / 2 - 60
 
   const overlay = `
     <svg width="${SIZE}" height="${SIZE}" xmlns="http://www.w3.org/2000/svg">
       <rect width="${SIZE}" height="${SIZE}" fill="${NAVY}" opacity="0.75"/>
 
-      <!-- Header -->
-      <text x="${SIZE / 2}" y="70" font-family="Arial" font-size="24" font-weight="bold"
-            fill="${WHEAT}" text-anchor="middle" letter-spacing="4" opacity="0.7">ESTA NOCHE</text>
+      ${textNode({
+        x: SIZE / 2,
+        y: 70,
+        text: 'ESTA NOCHE',
+        attrs: textAttrs({ family: TITLE_FONT, size: 24, weight: 'bold', fill: WHEAT, anchor: 'middle', opacity: 0.7 }),
+      })}
       ${svgTitle('AC SED')}
 
-      <!-- VS -->
-      <text x="${SIZE / 2}" y="${centerY + 15}" font-family="Arial" font-size="56"
-            font-weight="bold" fill="${WHEAT}" text-anchor="middle">VS</text>
+      ${textNode({
+        x: SIZE / 2,
+        y: centerY + 15,
+        text: 'VS',
+        attrs: textAttrs({ family: TITLE_FONT, size: 56, weight: 'bold', fill: WHEAT, anchor: 'middle' }),
+      })}
 
-      <!-- Team names (bigger) -->
-      <text x="${SIZE / 2 - 260}" y="${centerY + 195}" font-family="Arial" font-size="30"
-            font-weight="bold" fill="${CREAM}" text-anchor="middle">
-        ${escapeXml(homeTeam.name.toUpperCase())}
-      </text>
-      <text x="${SIZE / 2 + 260}" y="${centerY + 195}" font-family="Arial" font-size="30"
-            font-weight="bold" fill="${CREAM}" text-anchor="middle">
-        ${escapeXml(awayTeam.name.toUpperCase())}
-      </text>
+      ${textNode({
+        x: SIZE / 2 - 260,
+        y: centerY + 195,
+        text: escapeXml(homeTeam.name.toUpperCase()),
+        attrs: textAttrs({ family: BODY_FONT, size: 30, weight: 'bold', fill: CREAM, anchor: 'middle' }),
+      })}
+      ${textNode({
+        x: SIZE / 2 + 260,
+        y: centerY + 195,
+        text: escapeXml(awayTeam.name.toUpperCase()),
+        attrs: textAttrs({ family: BODY_FONT, size: 30, weight: 'bold', fill: CREAM, anchor: 'middle' }),
+      })}
 
-      <!-- Date & time (bigger) -->
-      <text x="${SIZE / 2}" y="${SIZE - 250}" font-family="Arial" font-size="28"
-            fill="${CREAM}" text-anchor="middle" font-weight="bold">${escapeXml(dateStr)}</text>
-      <text x="${SIZE / 2}" y="${SIZE - 205}" font-family="Arial" font-size="38"
-            font-weight="bold" fill="${WHEAT}" text-anchor="middle">${timeStr} HRS</text>
-      ${venueStr ? `<text x="${SIZE / 2}" y="${SIZE - 168}" font-family="Arial" font-size="24" fill="${CREAM}" text-anchor="middle" opacity="0.9" font-weight="bold">${venueStr}</text>` : ''}
+      ${textNode({
+        x: SIZE / 2,
+        y: SIZE - 290,
+        text: escapeXml(dateStr),
+        attrs: textAttrs({ family: BODY_FONT, size: 28, weight: 'bold', fill: CREAM, anchor: 'middle' }),
+      })}
+      ${textNode({
+        x: SIZE / 2,
+        y: SIZE - 230,
+        text: `${timeStr} HRS`,
+        attrs: textAttrs({ family: TITLE_FONT, size: 38, weight: 'bold', fill: WHEAT, anchor: 'middle' }),
+      })}
+      ${venueStr
+        ? textNode({
+            x: SIZE / 2,
+            y: SIZE - 180,
+            text: venueStr,
+            attrs: textAttrs({ family: BODY_FONT, size: 24, weight: 'bold', fill: CREAM, anchor: 'middle', opacity: 0.9 }),
+          })
+        : ''}
 
       ${svgFooter()}
     </svg>
@@ -461,7 +527,7 @@ export async function generatePromoImage(
 // --- Custom overlay on any background ---
 
 export async function composeCustomImage(
-  background: string | Buffer
+  background: string | Buffer,
 ): Promise<Buffer> {
   const [bg, footerLogo] = await Promise.all([
     loadBackground(background),
@@ -499,7 +565,6 @@ export async function listTemplates(): Promise<string[]> {
       .filter(f => /\.(jpg|jpeg|png|webp)$/i.test(f))
       .map(f => `/ig-templates/${f}`)
   } catch {
-    // Fallback to team photos if no ig-templates directory
     const publicDir = path.join(process.cwd(), 'public')
     const files = await fs.readdir(publicDir)
     return files

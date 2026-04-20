@@ -29,8 +29,9 @@ Never run any npx prisma commands or npm commands locally — everything runs in
 - Example: `grounds` (API) → `venue` (DB)
 
 ### Team Detection
-- **ALWAYS** use the utility function `isACSED()` from `lib/team-utils.ts` to check if a team is AC SED
-- **NEVER** use string comparisons like `.includes('ACSED')` or `.toUpperCase().includes('AC SED')`
+- **ALWAYS** try to recognize AC SED by the team ID first, as it is the most reliable method.
+- If recognition by ID is not possible and you need to check by name, **ALWAYS** use the utility function `isACSED()` from `lib/team-utils.ts`.
+- **NEVER** use string comparisons like `.includes('ACSED')` or `.toUpperCase().includes('AC SED')`.
 - Import: `import { ACSED_TEAM_NAME, ACSED_TEAM_ID, isACSED } from '@/lib/team-utils'`
 - Example: `isACSED(team?.name)` returns `true` if team is AC SED
 
