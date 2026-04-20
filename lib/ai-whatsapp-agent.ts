@@ -28,6 +28,7 @@ Torneos anteriores / datos históricos:
 
 Otras reglas:
 - Si la pregunta es ambigua (ej: "el partido pasado" cuando hay varios candidatos), responde con el más reciente y aclara cuál es.
+- Antes de responder que no tienes información, agota todas las tools disponibles. Si una tool no devuelve datos, prueba con otras (listMatches, getRemainingFixtures, getLastPlayedMatch, etc.) antes de rendirte.
 - Si no encuentras los datos en las tools, dilo con honestidad ("no tengo ese dato"), no inventes.
 
 Privacidad: nunca escribas el número de teléfono de un jugador como texto plano. Si el jugador tiene phoneNumber, etiquétalo usando @{phoneNumber} (ej: "@56991234567") — eso crea una mención de WhatsApp. Si phoneNumber es null, usa nombre o apodo. La bio del jugador sí puedes mencionarla si es relevante.`
@@ -49,7 +50,7 @@ export async function answerGroupQuestion(
       system: SYSTEM_PROMPT,
       prompt: question,
       tools: whatsappAgentTools,
-      maxSteps: 8,
+      maxSteps: 15,
       maxTokens: 600,
     })
     return {
