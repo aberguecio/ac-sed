@@ -145,7 +145,7 @@ export async function generateResultImage(
   awayTeam: TeamInfo,
 ): Promise<Buffer> {
   const bg = await loadBackground(background || getDefaultTemplatePath())
-  const logoSize = 240
+  const logoSize = 150
 
   const [homeLogoRaw, awayLogoRaw, beersIconRaw, footerLogo] = await Promise.all([
     getTeamLogo(homeTeam).then(b => b || createPlaceholderLogo(homeTeam.name)),
@@ -203,46 +203,46 @@ export async function generateResultImage(
 
       ${svgTitle('RESULTADO')}
 
-      <!-- Score: body font at weight 400 (Boldonse has no bold cut; faux-bold is too heavy at 120px). -->
+      <!-- Score -->
       ${textNode({
-        x: SIZE / 2 - 85,
-        y: 560,
+        x: SIZE / 2 - 220,
+        y: 430,
         text: String(homeScore),
-        attrs: textAttrs({ family: BODY_FONT, size: 120, weight: 400, fill: CREAM, anchor: 'middle' }),
+        attrs: textAttrs({ family: TITLE_FONT, size: 220, weight: 400, fill: CREAM, anchor: 'middle' }),
       })}
       ${textNode({
         x: SIZE / 2,
-        y: 540,
+        y: 390,
         text: '-',
-        attrs: textAttrs({ family: BODY_FONT, size: 44, weight: 400, fill: WHEAT, anchor: 'middle', opacity: 0.8 }),
+        attrs: textAttrs({ family: TITLE_FONT, size: 80, weight: 400, fill: WHEAT, anchor: 'middle', opacity: 0.8 }),
       })}
       ${textNode({
-        x: SIZE / 2 + 85,
-        y: 560,
+        x: SIZE / 2 + 220,
+        y: 430,
         text: String(awayScore),
-        attrs: textAttrs({ family: BODY_FONT, size: 120, weight: 400, fill: CREAM, anchor: 'middle' }),
+        attrs: textAttrs({ family: TITLE_FONT, size: 220, weight: 400, fill: CREAM, anchor: 'middle' }),
       })}
 
       <!-- Team names -->
       ${textNode({
-        x: SIZE / 2 - 270,
-        y: 670,
+        x: SIZE / 2 - 200,
+        y: 705,
         text: escapeXml(homeTeam.name.toUpperCase()),
-        attrs: textAttrs({ family: BODY_FONT, size: 34, weight: 'bold', fill: CREAM, anchor: 'middle' }),
+        attrs: textAttrs({ family: BODY_FONT, size: 24, weight: 'bold', fill: CREAM, anchor: 'middle' }),
       })}
       ${textNode({
-        x: SIZE / 2 + 270,
-        y: 670,
+        x: SIZE / 2 + 200,
+        y: 705,
         text: escapeXml(awayTeam.name.toUpperCase()),
-        attrs: textAttrs({ family: BODY_FONT, size: 34, weight: 'bold', fill: CREAM, anchor: 'middle' }),
+        attrs: textAttrs({ family: BODY_FONT, size: 24, weight: 'bold', fill: CREAM, anchor: 'middle' }),
       })}
 
       <!-- Subtitle phrase -->
       ${textNode({
         x: SIZE / 2,
-        y: 760,
+        y: 790,
         text: escapeXml(headline),
-        attrs: textAttrs({ family: BODY_FONT, size: 28, fill: WHEAT, letterSpacing: 1, anchor: 'middle', opacity: 0.9 }),
+        attrs: textAttrs({ family: BODY_FONT, size: 26, fill: WHEAT, letterSpacing: 1, anchor: 'middle', opacity: 0.9 }),
       })}
 
       ${svgFooter()}
@@ -253,14 +253,14 @@ export async function generateResultImage(
 
   const composites: sharp.OverlayOptions[] = [
     { input: overlaySvg, top: 0, left: 0 },
-    { input: homeLogo, top: 370, left: Math.floor(SIZE / 2 - 270 - logoSize / 2) },
-    { input: awayLogo, top: 370, left: Math.floor(SIZE / 2 + 270 - logoSize / 2) },
+    { input: homeLogo, top: 520, left: Math.floor(SIZE / 2 - 200 - logoSize / 2) },
+    { input: awayLogo, top: 520, left: Math.floor(SIZE / 2 + 200 - logoSize / 2) },
   ]
 
   if (beersIcon) {
     composites.push(
-      { input: beersIcon, top: 718, left: 200 },
-      { input: beersIcon, top: 718, left: SIZE - 200 - 50 },
+      { input: beersIcon, top: 767, left: 240 },
+      { input: beersIcon, top: 767, left: SIZE - 240 - 50 },
     )
   }
 
