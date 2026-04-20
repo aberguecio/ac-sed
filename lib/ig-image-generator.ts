@@ -438,6 +438,7 @@ export async function generatePromoImage(
   const timeStr = matchDate.toLocaleTimeString('es-CL', {
     hour: '2-digit',
     minute: '2-digit',
+    hour12: false,
   })
 
   const venueStr = venue ? escapeXml(venue.toUpperCase()) : ''
