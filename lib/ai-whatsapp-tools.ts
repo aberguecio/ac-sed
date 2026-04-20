@@ -10,6 +10,12 @@ import { bestLevenshtein } from '@/lib/string-utils'
 const DEFAULT_LIMIT = 50
 const MAX_LIMIT = 100
 
+const startOfToday = (): Date => {
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
 async function findActiveTournament() {
   return prisma.tournament.findFirst({
     where: { isActive: true },
@@ -109,7 +115,7 @@ export const listMatchesTool = tool({
       where.homeScore = { not: null }
       if (!from && !to && !year) dateFilter.lte = new Date()
     } else if (effectiveStatus === 'upcoming') {
-      if (!from && !to && !year) dateFilter.gt = new Date()
+      if (!from && !to && !year) dateFilter.gte = startOfToday()
     }
     if (Object.keys(dateFilter).length) where.date = dateFilter
 
@@ -221,7 +227,7 @@ export const getNextMatchTool = tool({
     if (!focus) return null
     const m = await prisma.match.findFirst({
       where: {
-        date: { gt: new Date() },
+        date: { gte: startOfToday() },
         OR: [{ homeTeamId: focus }, { awayTeamId: focus }],
       },
       orderBy: { date: 'asc' },
@@ -822,7 +828,7 @@ export const getRemainingFixturesTool = tool({
     const teamFilter = await resolveTeamId(teamId, opponent)
     const where: Record<string, unknown> = {
       ...scopeFilter,
-      date: { gt: new Date() },
+      date: { gte: startOfToday() },
     }
     if (teamId || opponent) {
       if (!teamFilter) return { matches: [] }
