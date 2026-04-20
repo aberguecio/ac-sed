@@ -196,7 +196,13 @@ async function handleIncomingText(text: IncomingText): Promise<Record<string, un
   if (!answer) return { ok: true, handled: false, reason: 'empty-answer' }
 
   try {
-    const sent = await getWhatsappProvider().sendText(text.remoteJid, answer, AI_REPLY_TYPING_MS)
+    const mentionedJids = extractMentionedJids(answer)
+    const sent = await getWhatsappProvider().sendText(
+      text.remoteJid,
+      answer,
+      AI_REPLY_TYPING_MS,
+      mentionedJids.length > 0 ? mentionedJids : undefined,
+    )
     await prisma.whatsappMessage.create({
       data: {
         playerId: null,
@@ -219,6 +225,16 @@ async function handleIncomingText(text: IncomingText): Promise<Record<string, un
 function stripJidToPhone(jid: string): string {
   const at = jid.indexOf('@')
   return at === -1 ? jid : jid.slice(0, at)
+}
+
+/**
+ * Extracts WhatsApp JIDs from bot answers that contain @56XXXXXXXXX tags.
+ * Chilean mobile numbers only (56 + 9 digits). Returns "56XXXXXXXXX@s.whatsapp.net" strings.
+ */
+function extractMentionedJids(text: string): string[] {
+  const matches = text.match(/@(56\d{9})\b/g)
+  if (!matches) return []
+  return [...new Set(matches.map(m => m.slice(1)))].map(p => `${p}@s.whatsapp.net`)
 }
 
 // Strips the bot's own @<botId> mention so the LLM doesn't read the digits

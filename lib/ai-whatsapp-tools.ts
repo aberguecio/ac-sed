@@ -5,6 +5,7 @@ import { isACSED, ACSED_TEAM_NAME } from '@/lib/team-utils'
 import { getMatchContext } from '@/lib/ai'
 import { calculateStandingsUpToDate } from '@/lib/stats-calculator'
 import { getTournamentRules } from '@/lib/tournament-config'
+import { bestLevenshtein } from '@/lib/string-utils'
 
 const DEFAULT_LIMIT = 50
 const MAX_LIMIT = 100
@@ -353,29 +354,59 @@ export const getMatchAttendanceTool = tool({
   },
 })
 
+const PLAYER_SELECT = {
+  id: true,
+  name: true,
+  nicknames: true,
+  position: true,
+  number: true,
+  active: true,
+  bio: true,
+  phoneNumber: true,
+} as const
+
+const FUZZY_MAX_DISTANCE = 2
+const FUZZY_MIN_QUERY_LEN = 3
+
 export const searchPlayerTool = tool({
   description:
-    'Busca jugador del roster por nombre o apodo (fuzzy, case-insensitive). Devuelve id + nombre + apodos. NUNCA expone teléfonos.',
+    'Busca jugador del roster por nombre o apodo. Devuelve id, nombre, apodos, posición, dorsal, bio y phoneNumber. ' +
+    'Si phoneNumber no es null, etiqueta al jugador con @{phoneNumber} en tu respuesta (ej: @56991234567). ' +
+    'NO menciones el número de teléfono como texto plano.',
   parameters: z.object({ query: z.string().min(1) }),
   execute: async ({ query }) => {
     const q = query.trim()
-    const players = await prisma.player.findMany({
+    const qLower = q.toLowerCase()
+
+    // Phase 1: exact substring / array match via DB index (fast path)
+    let players = await prisma.player.findMany({
       where: {
         OR: [
           { name: { contains: q, mode: 'insensitive' } },
-          { nicknames: { hasSome: [q, q.toLowerCase()] } },
+          { nicknames: { hasSome: [q, qLower] } },
         ],
       },
-      select: {
-        id: true,
-        name: true,
-        nicknames: true,
-        position: true,
-        number: true,
-        active: true,
-      },
+      select: PLAYER_SELECT,
       take: 10,
     })
+
+    // Phase 2: fuzzy fallback — full roster scan with Levenshtein distance
+    if (players.length === 0 && q.length >= FUZZY_MIN_QUERY_LEN) {
+      const all = await prisma.player.findMany({ select: PLAYER_SELECT })
+
+      players = all
+        .filter(p => {
+          const nameTokens = p.name.toLowerCase().split(/\s+/)
+          return bestLevenshtein(qLower, [...nameTokens, ...p.nicknames]) <= FUZZY_MAX_DISTANCE
+        })
+        .sort((a, b) => {
+          const tokensA = [...a.name.toLowerCase().split(/\s+/), ...a.nicknames]
+          const tokensB = [...b.name.toLowerCase().split(/\s+/), ...b.nicknames]
+          return bestLevenshtein(qLower, tokensA) - bestLevenshtein(qLower, tokensB)
+        })
+        .slice(0, 10)
+    }
+
     return players
   },
 })

@@ -46,7 +46,7 @@ export interface WhatsappProvider {
     options: readonly string[],
     typingMs: number
   ): Promise<{ id: string }>
-  sendText(to: string, body: string, typingMs?: number): Promise<{ id: string }>
+  sendText(to: string, body: string, typingMs?: number, mentionedJids?: string[]): Promise<{ id: string }>
   parsePollVote(payload: unknown): ParsedPollVote | null
   parseIncomingText(payload: unknown): ParsedIncomingText | null
   verifySignature(req: Request): boolean
@@ -154,10 +154,11 @@ class EvolutionProvider implements WhatsappProvider {
     return { id }
   }
 
-  async sendText(to: string, body: string, typingMs?: number): Promise<{ id: string }> {
+  async sendText(to: string, body: string, typingMs?: number, mentionedJids?: string[]): Promise<{ id: string }> {
     const url = `${this.baseUrl}/message/sendText/${encodeURIComponent(this.instance)}`
     const payload: Record<string, unknown> = { number: to, text: body }
     if (typingMs && typingMs > 0) payload.delay = typingMs
+    if (mentionedJids && mentionedJids.length > 0) payload.mentioned = mentionedJids
     const res = await fetch(url, {
       method: 'POST',
       headers: {

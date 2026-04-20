@@ -35,6 +35,13 @@ Never run any npx prisma commands or npm commands locally — everything runs in
 - Import: `import { ACSED_TEAM_NAME, ACSED_TEAM_ID, isACSED } from '@/lib/team-utils'`
 - Example: `isACSED(team?.name)` returns `true` if team is AC SED
 
+### String Utilities
+- **File**: `lib/string-utils.ts`
+- `levenshtein(a, b)` — standard edit distance between two strings (case-sensitive; normalise inputs first)
+- `bestLevenshtein(query, candidates[])` — returns the minimum distance from `query` to any string in `candidates`; returns `Infinity` for empty arrays
+- Used for fuzzy player/nickname search in `lib/ai-whatsapp-tools.ts` (fallback when exact DB match returns nothing)
+- Import: `import { levenshtein, bestLevenshtein } from '@/lib/string-utils'`
+
 ### Frontend
 - Framework: Next.js 15
 - Styling: Tailwind CSS

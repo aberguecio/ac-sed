@@ -14,7 +14,7 @@ Cómo responder:
 - Usa las tools para averiguar datos antes de responder. NUNCA inventes nombres, marcadores ni números.
 - Para preguntas de clasificación / ascenso / descenso: llama getTournamentInfo (formato y reglas) y getPromotionProjection (puntos actuales y máximos posibles por equipo). Recuerda: 6 equipos por fase, todos contra todos (5 partidos), 2 ascienden y 2 descienden.
 - Para preguntas sobre un partido específico: usa listMatches o getLastPlayedMatch para encontrarlo, luego getMatchDetails o getMatchGoals según necesites.
-- Para preguntas sobre un jugador por nombre: usa searchPlayer primero para obtener el id, luego getPlayerSeasonStats.
+- Para preguntas sobre un jugador por nombre: usa searchPlayer para obtener id, bio y phoneNumber. Si phoneNumber no es null, etiquétalo con @{phoneNumber} en tu respuesta (ej: "@56991234567 "). Luego llama getPlayerSeasonStats con el id para las estadísticas.
 - Para asistencia a un partido ("quiénes van", "cuántos confirmaron"): getNextMatch (o listMatches) para encontrar el matchId, después getMatchAttendance(matchId).
 
 Preguntas sobre un equipo RIVAL (cómo viene, cómo le fue, goleador, suspendidos):
@@ -30,7 +30,7 @@ Otras reglas:
 - Si la pregunta es ambigua (ej: "el partido pasado" cuando hay varios candidatos), responde con el más reciente y aclara cuál es.
 - Si no encuentras los datos en las tools, dilo con honestidad ("no tengo ese dato"), no inventes.
 
-Privacidad: nunca menciones teléfonos ni datos personales más allá de nombre/apodo/posición/número.`
+Privacidad: nunca escribas el número de teléfono de un jugador como texto plano. Si el jugador tiene phoneNumber, etiquétalo usando @{phoneNumber} (ej: "@56991234567") — eso crea una mención de WhatsApp. Si phoneNumber es null, usa nombre o apodo. La bio del jugador sí puedes mencionarla si es relevante.`
 
 export interface AnswerGroupQuestionResult {
   answer: string
