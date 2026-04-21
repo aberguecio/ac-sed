@@ -306,6 +306,13 @@ export async function generateMatchNews(
     hasGroupContext,
   } = context
 
+  // Get roster players to map leaguePlayerId to names and nicknames
+  const allPlayers = await prisma.player.findMany({
+    where: { leaguePlayerId: { not: null } },
+    select: { id: true, leaguePlayerId: true, name: true, nicknames: true },
+  })
+  const leagueToPlayer = new Map(allPlayers.map(p => [p.leaguePlayerId!, p]))
+
   // Format goals by team with assists
   const acsedGoals = goals.filter(g => g.teamName.toUpperCase().includes('ACSED') || g.teamName.toUpperCase().includes('AC SED'))
   const rivalGoals = goals.filter(g => !g.teamName.toUpperCase().includes('ACSED') && !g.teamName.toUpperCase().includes('AC SED'))
