@@ -32,27 +32,34 @@ export default async function PlayersPage() {
     where: { active: true },
     select: {
       ...PUBLIC_PLAYER_SELECT,
-      goals: {
-        select: {
-          id: true,
-          match: {
-            select: {
-              tournamentId: true,
-              stageId: true,
-              groupId: true
-            }
-          }
-        }
-      }
     },
     orderBy: [{ number: 'asc' }, { name: 'asc' }],
   })
 
+  // Get all goals from MatchGoal and count by leaguePlayerId
+  const allGoals = await prisma.matchGoal.findMany({
+    select: {
+      leaguePlayerId: true,
+      match: {
+        select: {
+          tournamentId: true,
+          stageId: true,
+          groupId: true
+        }
+      }
+    }
+  })
+
   // Calculate stats for each player
   const playersWithStats = players.map(player => {
-    const totalGoals = player.goals.length
+    if (!player.leaguePlayerId) {
+      return { ...player, totalGoals: 0, currentPhaseGoals: 0 }
+    }
+
+    const playerGoals = allGoals.filter(g => g.leaguePlayerId === player.leaguePlayerId)
+    const totalGoals = playerGoals.length
     const currentPhaseGoals = latestMatch
-      ? player.goals.filter(g =>
+      ? playerGoals.filter(g =>
           g.match.tournamentId === latestMatch.tournamentId &&
           g.match.stageId === latestMatch.stageId &&
           g.match.groupId === latestMatch.groupId
