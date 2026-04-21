@@ -104,17 +104,30 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         won: row.won,
         drawn: row.drawn,
         lost: row.lost,
+        goalsFor: row.goalsFor,
+        goalsAgainst: row.goalsAgainst,
         points: row.points,
         isACSED: isACSED(row.teamName),
       }))
 
+      // Get roster players to map leaguePlayerId to roster names
+      const allPlayers = await prisma.player.findMany({
+        where: { leaguePlayerId: { not: null } },
+        select: { leaguePlayerId: true, name: true },
+      })
+      const leagueToPlayer = new Map(allPlayers.map(p => [p.leaguePlayerId!, p]))
+
       const acsedGoals = context.goals
         .filter((g: any) => isACSED(g.teamName))
-        .map((g: any) => ({
-          name: `${g.scrapedPlayer.firstName} ${g.scrapedPlayer.lastName}`,
-          goals: 1,
-          minute: g.minute,
-        }))
+        .map((g: any) => {
+          const rosterPlayer = leagueToPlayer.get(g.leaguePlayerId)
+          const name = rosterPlayer?.name || `${g.scrapedPlayer.firstName} ${g.scrapedPlayer.lastName}`
+          return {
+            name,
+            goals: 1,
+            minute: g.minute,
+          }
+        })
 
       // Consolidate goals per player
       const scorerMap = new Map<string, { name: string; goals: number; minute: number | null }>()
@@ -127,7 +140,32 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         }
       }
 
-      imageBuffer = await generateStandingsImage(bgSource, standings, Array.from(scorerMap.values()))
+      // Get assists from goals
+      const acsedAssists = context.goals
+        .filter((g: any) => isACSED(g.teamName) && g.assistLeaguePlayerId)
+        .map((g: any) => {
+          const rosterPlayer = leagueToPlayer.get(g.assistLeaguePlayerId)
+          const name = rosterPlayer?.name || (g.assistPlayer ? `${g.assistPlayer.firstName} ${g.assistPlayer.lastName}` : 'Desconocido')
+          return { name, assists: 1 }
+        })
+
+      // Consolidate assists per player
+      const assistMap = new Map<string, { name: string; assists: number }>()
+      for (const a of acsedAssists) {
+        const existing = assistMap.get(a.name)
+        if (existing) {
+          existing.assists++
+        } else {
+          assistMap.set(a.name, { name: a.name, assists: 1 })
+        }
+      }
+
+      imageBuffer = await generateStandingsImage(
+        bgSource,
+        standings,
+        Array.from(scorerMap.values()),
+        Array.from(assistMap.values())
+      )
     } else if (imageType === 'promo' && match) {
       const homeTeam = {
         id: match.homeTeam?.id || 0,

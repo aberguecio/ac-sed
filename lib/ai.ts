@@ -38,15 +38,30 @@ export async function getMatchContext(match: Match & { homeTeam?: { name: string
   const isHome = isACSED(homeTeamName)
   const opponentName = isHome ? awayTeamName : homeTeamName
 
+  // Get all roster players with leaguePlayerId to map league IDs to roster players (for nicknames)
+  const allPlayers = await prisma.player.findMany({
+    where: { leaguePlayerId: { not: null } },
+    select: { id: true, leaguePlayerId: true, name: true, nicknames: true },
+  })
+  const leagueToPlayer = new Map(allPlayers.map(p => [p.leaguePlayerId!, p]))
+
   // Fetch all context data in parallel
-  const [goals, cards, previousMatches, upcomingMatches, otherMatchesInRound, historicalMatches] = await Promise.all([
+  const [goals, cards, playerMatches, previousMatches, upcomingMatches, otherMatchesInRound, historicalMatches] = await Promise.all([
     prisma.matchGoal.findMany({
       where: { matchId: match.id },
-      include: { scrapedPlayer: true }
+      include: {
+        scrapedPlayer: true,
+        assistPlayer: true,
+      }
     }),
     prisma.matchCard.findMany({
       where: { matchId: match.id },
       include: { scrapedPlayer: true }
+    }),
+    // Get attendance and aggregated performance from PlayerMatch
+    prisma.playerMatch.findMany({
+      where: { matchId: match.id },
+      include: { player: true }
     }),
     // Previous played matches BEFORE this match's date
     hasPhaseContext
@@ -247,6 +262,7 @@ export async function getMatchContext(match: Match & { homeTeam?: { name: string
     match,
     goals,
     cards,
+    playerMatches,
     previousMatches,
     standingsRows,
     upcomingMatches,
@@ -280,6 +296,7 @@ export async function generateMatchNews(
   const {
     goals,
     cards,
+    playerMatches,
     previousMatches,
     standingsRows,
     upcomingMatches,
@@ -289,7 +306,7 @@ export async function generateMatchNews(
     hasGroupContext,
   } = context
 
-  // Format goals by team
+  // Format goals by team with assists
   const acsedGoals = goals.filter(g => g.teamName.toUpperCase().includes('ACSED') || g.teamName.toUpperCase().includes('AC SED'))
   const rivalGoals = goals.filter(g => !g.teamName.toUpperCase().includes('ACSED') && !g.teamName.toUpperCase().includes('AC SED'))
 
@@ -298,7 +315,21 @@ export async function generateMatchNews(
 
   let goalsInfo = ''
   if (acsedGoals.length > 0) {
-    const goalScorers = acsedGoals.map(g => `${g.scrapedPlayer.firstName} ${g.scrapedPlayer.lastName}`).join(', ')
+    const goalScorers = acsedGoals.map(g => {
+      const rosterPlayer = leagueToPlayer.get(g.leaguePlayerId)
+      const scorerName = rosterPlayer?.name || `${g.scrapedPlayer.firstName} ${g.scrapedPlayer.lastName}`
+      const scorerNicknames = rosterPlayer?.nicknames.length ? ` (apodos: ${rosterPlayer.nicknames.join(', ')})` : ''
+
+      let scorer = `${scorerName}${scorerNicknames}`
+
+      if (g.assistPlayer) {
+        const assisterRosterPlayer = g.assistLeaguePlayerId ? leagueToPlayer.get(g.assistLeaguePlayerId) : null
+        const assisterName = assisterRosterPlayer?.name || `${g.assistPlayer.firstName} ${g.assistPlayer.lastName}`
+        const assisterNicknames = assisterRosterPlayer?.nicknames.length ? ` (apodos: ${assisterRosterPlayer.nicknames.join(', ')})` : ''
+        return `${scorer} (asistencia de ${assisterName}${assisterNicknames})`
+      }
+      return scorer
+    }).join(', ')
     goalsInfo += `\n- Goleadores AC SED: ${goalScorers}`
   }
   if (rivalGoals.length > 0) {
@@ -509,6 +540,26 @@ export async function generateMatchNews(
     }
   }
 
+  // Format attendance info
+  let attendanceInfo = ''
+  const confirmedPlayers = playerMatches.filter(pm => pm.attendanceStatus === 'CONFIRMED')
+  if (confirmedPlayers.length > 0) {
+    const topPerformers = confirmedPlayers
+      .filter(pm => pm.goals > 0 || pm.assists > 0)
+      .map(pm => {
+        const parts = []
+        if (pm.goals > 0) parts.push(`${pm.goals} gol${pm.goals > 1 ? 'es' : ''}`)
+        if (pm.assists > 0) parts.push(`${pm.assists} asistencia${pm.assists > 1 ? 's' : ''}`)
+        return `${pm.player.name} (${parts.join(', ')})`
+      })
+    if (topPerformers.length > 0) {
+      attendanceInfo = `\n- Rendimiento destacado: ${topPerformers.join(', ')}`
+    }
+  }
+
+  // Add match context if available
+  const matchContextInfo = match.context ? `\n- Contexto del partido: ${match.context}` : ''
+
   const prompt = `Eres el periodista del Club AC SED. Escribe una crónica deportiva en español sobre el siguiente partido de la Liga B chilena.
 
 Datos del partido:
@@ -516,7 +567,7 @@ Datos del partido:
 - ${isHome ? 'Local' : 'Visitante'}: AC SED
 - Rival: ${rival}
 - Resultado: AC SED ${acsedScore ?? '?'} - ${rivalScore ?? '?'} ${rival}
-- ${match.roundName ? `Jornada: ${match.roundName}` : ''}${goalsInfo}${cardsInfo}${streakInfo}${standingsInfo}${otherResultsInfo}${historicalInfo}${upcomingInfo}
+- ${match.roundName ? `Jornada: ${match.roundName}` : ''}${matchContextInfo}${goalsInfo}${cardsInfo}${attendanceInfo}${streakInfo}${standingsInfo}${otherResultsInfo}${historicalInfo}${upcomingInfo}
 
 Genera:
 1. Un TÍTULO periodístico corto y atractivo (máximo 10 palabras)
@@ -567,7 +618,14 @@ export async function generateInstagramCaption(
   const rivalScore = isHome ? match.awayScore : match.homeScore
 
   const context = await getMatchContext(match)
-  const { goals, standingsRows } = context
+  const { goals, standingsRows, playerMatches } = context
+
+  // Get roster players to map leaguePlayerId to roster names (for Instagram captions)
+  const allPlayers = await prisma.player.findMany({
+    where: { leaguePlayerId: { not: null } },
+    select: { leaguePlayerId: true, name: true },
+  })
+  const leagueToPlayer = new Map(allPlayers.map(p => [p.leaguePlayerId!, p]))
 
   const igSystemPrompt = `Eres el community manager de Instagram del club AC SED (@ac.sed_2023). Es un club de fútbol amateur con onda cervecera, de ahí su nombre AC Sed.`
 
@@ -616,8 +674,30 @@ ${igRules}`
 
   const acsedGoals = goals.filter(g => isACSED(g.teamName))
   const scorersStr = acsedGoals.length > 0
-    ? acsedGoals.map(g => `${g.scrapedPlayer.firstName} ${g.minute ? `(${g.minute}')` : ''}`).join(', ')
+    ? acsedGoals.map(g => {
+        const rosterPlayer = leagueToPlayer.get(g.leaguePlayerId)
+        const scorerName = rosterPlayer?.name.split(' ')[0] || g.scrapedPlayer.firstName
+        const scorer = `${scorerName} ${g.minute ? `(${g.minute}')` : ''}`
+
+        if (g.assistPlayer) {
+          const assisterRosterPlayer = g.assistLeaguePlayerId ? leagueToPlayer.get(g.assistLeaguePlayerId) : null
+          const assisterName = assisterRosterPlayer?.name.split(' ')[0] || g.assistPlayer.firstName
+          return `${scorer} (asistencia de ${assisterName})`
+        }
+        return scorer
+      }).join(', ')
     : ''
+
+  // Get top performers from playerMatches
+  const topPerformers = playerMatches
+    .filter(pm => pm.attendanceStatus === 'CONFIRMED' && (pm.goals > 0 || pm.assists > 0))
+    .map(pm => ({
+      name: pm.player.name.split(' ')[0], // First name only
+      goals: pm.goals,
+      assists: pm.assists
+    }))
+    .sort((a, b) => (b.goals + b.assists) - (a.goals + a.assists))
+    .slice(0, 3)
 
   const acsedStanding = standingsRows.find(s => isACSED(s.teamName))
   const standingStr = acsedStanding
@@ -630,19 +710,30 @@ ${igRules}`
       ? 'reflexivo pero guerrero, no derrotista'
       : 'positivo, rescatando lo bueno'
 
+  // Add match context if available
+  const contextStr = match.context ? `Contexto: ${match.context}` : ''
+
   const prompt = `${igSystemPrompt}
 
 Escribe un caption para Instagram sobre el resultado del partido:
 Resultado: ${result}
 AC SED ${acsedScore ?? '?'} vs ${rivalScore ?? '?'} ${rival}
 AC SED jugó de ${isHome ? 'local' : 'visitante'}
+${contextStr}
 ${scorersStr ? `Goleadores: ${scorersStr}` : ''}
+${topPerformers.length > 0 ? `Top performers: ${topPerformers.map(p => {
+  const parts = []
+  if (p.goals > 0) parts.push(`${p.goals}G`)
+  if (p.assists > 0) parts.push(`${p.assists}A`)
+  return `${p.name} (${parts.join('+')})`
+}).join(', ')}` : ''}
 ${standingStr ? standingStr : ''}
 
 Reglas:
 - Máximo 150 palabras
 - Tono: ${tone}
 - Menciona goleadores por nombre de pila si los hay
+- Si hay contexto especial del partido, menciónalo de forma natural
 - Antes de los hashtags, agrega una línea que diga algo como "El relato completo lo encuentras en acsed.cl" (varía la frase pero siempre menciona acsed.cl)
 ${igRules}`
 

@@ -111,6 +111,17 @@ async function fetchAPI(endpoint: string) {
 
 async function saveMatchEvents(matchId: number, leagueMatchId: number) {
   try {
+    // Check if match events are locked (manually edited)
+    const match = await prisma.match.findUnique({
+      where: { id: matchId },
+      select: { eventsLocked: true }
+    })
+
+    if (match?.eventsLocked) {
+      console.log(`  🔒 Skipping events for match ${leagueMatchId} (manually edited)`)
+      return
+    }
+
     // Fetch events (goals and cards) from API
     const events = await fetchAPI(`/matches/${leagueMatchId}/events?filter={"include":["player","team"]}`)
 
@@ -477,6 +488,7 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
     })
 
     let savedMatch: any
+    let wasResultUpdated = false
 
     if (!existing) {
       savedMatch = await prisma.match.create({ data: matchData })
@@ -487,6 +499,12 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
     } else {
       savedMatch = existing
       stats.updatedMatches++
+
+      // Check if this is a result update (match went from no result to having result)
+      const hadNoResult = existing.homeScore === null && existing.awayScore === null
+      const nowHasResult = match.homeScore !== null && match.awayScore !== null
+      wasResultUpdated = hadNoResult && nowHasResult
+
       if (
         existing.homeScore !== match.homeScore ||
         existing.awayScore !== match.awayScore ||
@@ -505,6 +523,11 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
             venue: match.grounds || null
           },
         })
+
+        // If this AC SED match just got a result, add to newMatches for news generation
+        if (wasResultUpdated && (homeTeamId === ACSED_TEAM_ID || awayTeamId === ACSED_TEAM_ID)) {
+          newMatches.push(savedMatch)
+        }
       }
     }
 

@@ -105,6 +105,10 @@ model Match {
   // on each poll vote (future matches) and cleared after sending. Persisted
   // to survive restarts via instrumentation.ts.
   notifyGroupAt DateTime?
+  // Additional context for the match (manually added info: injuries, weather, special circumstances, etc.)
+  context       String?       @db.Text
+  // Lock to prevent scraper from overwriting manually edited match events (goals/assists/scorers)
+  eventsLocked  Boolean       @default(false)
   news           NewsArticle[]
   instagramPosts InstagramPost[]
   goals          MatchGoal[]
@@ -188,7 +192,6 @@ model Player {
   phoneNumber      String?        @unique
   // Nicknames for personalization in posts, news, AI messages
   nicknames        String[]       @default([])
-  goals            MatchGoal[]
   cards            MatchCard[]
   playerMatches    PlayerMatch[]
   whatsappMessages WhatsappMessage[]
@@ -207,7 +210,8 @@ model ScrapedPlayer {
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
   team          Team?       @relation(fields: [teamId], references: [id], onDelete: SetNull)
-  goals         MatchGoal[]
+  goals         MatchGoal[] @relation("GoalScorer")
+  assists       MatchGoal[] @relation("GoalAssist")
   cards         MatchCard[]
 
   @@index([teamId])
@@ -279,19 +283,20 @@ model TournamentAnalysis {
 model MatchGoal {
   id              Int            @id @default(autoincrement())
   matchId         Int
-  leaguePlayerId  Int            // Player ID from Liga B API
+  leaguePlayerId  Int            // Player ID from Liga B API (can be edited manually)
   minute          Int?
   teamName        String
   createdAt       DateTime       @default(now())
+  // Optional assist information (manually added)
+  assistLeaguePlayerId  Int?           // Player ID from Liga B API who assisted (can be edited manually)
   match           Match          @relation(fields: [matchId], references: [id], onDelete: Cascade)
-  scrapedPlayer   ScrapedPlayer  @relation(fields: [leaguePlayerId], references: [id], onDelete: Cascade)
-  // Optional link to our roster player
-  rosterPlayer    Player?        @relation(fields: [rosterPlayerId], references: [id], onDelete: SetNull)
-  rosterPlayerId  Int?
+  scrapedPlayer   ScrapedPlayer  @relation("GoalScorer", fields: [leaguePlayerId], references: [id], onDelete: Cascade)
+  // Assist relation
+  assistPlayer    ScrapedPlayer? @relation("GoalAssist", fields: [assistLeaguePlayerId], references: [id], onDelete: SetNull)
 
   @@index([matchId])
   @@index([leaguePlayerId])
-  @@index([rosterPlayerId])
+  @@index([assistLeaguePlayerId])
 }
 
 model MatchCard {
@@ -362,8 +367,9 @@ model PlayerMatch {
   matchId          Int
   attendanceStatus AttendanceStatus @default(PENDING)
   rating           Int?             // 1-10 (validated in API)
-  // Aggregated match performance
+  // Aggregated match performance (synced from MatchGoal/MatchCard)
   goals            Int              @default(0)
+  assists          Int              @default(0)
   yellowCards      Int              @default(0) // 0, 1, or 2
   redCard          Boolean          @default(false) // true if sent off (direct red or two yellows)
   notes            String?

@@ -2,28 +2,23 @@ import Link from 'next/link'
 import { prisma } from '@/lib/db'
 import { TeamLogo } from '@/components/team-logo'
 import { ACSED_TEAM_ID } from '@/lib/team-utils'
-
-type Tab = 'upcoming' | 'past'
+import { MatchesFilter } from './matches-filter'
 
 interface PageProps {
-  searchParams: Promise<{ tab?: string }>
+  searchParams: Promise<{ showAll?: string }>
 }
 
 export default async function AdminMatchesPage({ searchParams }: PageProps) {
-  const sp = await searchParams
-  const tab: Tab = sp.tab === 'past' ? 'past' : 'upcoming'
-  const now = new Date()
+  const params = await searchParams
+  const showAll = params.showAll === 'true'
 
   const matches = await prisma.match.findMany({
-    where: {
-      AND: [
-        tab === 'past' ? { date: { lt: now } } : { date: { gte: now } },
-        { OR: [{ homeTeamId: ACSED_TEAM_ID }, { awayTeamId: ACSED_TEAM_ID }] },
-      ],
+    where: showAll ? undefined : {
+      OR: [{ homeTeamId: ACSED_TEAM_ID }, { awayTeamId: ACSED_TEAM_ID }],
     },
-    orderBy: { date: tab === 'past' ? 'desc' : 'asc' },
+    orderBy: { date: 'desc' },
     include: { homeTeam: true, awayTeam: true, stage: true },
-    take: 100,
+    take: 200,
   })
 
   // Asistencia por partido: attended = CONFIRMED + LATE; initialized = cualquier fila PlayerMatch.
@@ -48,33 +43,18 @@ export default async function AdminMatchesPage({ searchParams }: PageProps) {
 
   return (
     <div className="p-4 sm:p-8">
-      <h1 className="text-2xl font-extrabold text-navy mb-6">Partidos</h1>
-
-      <div className="flex gap-2 mb-6">
-        <Link
-          href="/admin/matches?tab=upcoming"
-          className={`px-4 py-2 rounded-lg text-sm font-semibold ${
-            tab === 'upcoming'
-              ? 'bg-wheat text-navy'
-              : 'border border-gray-200 text-gray-600 hover:bg-gray-50'
-          }`}
-        >
-          Próximos
-        </Link>
-        <Link
-          href="/admin/matches?tab=past"
-          className={`px-4 py-2 rounded-lg text-sm font-semibold ${
-            tab === 'past'
-              ? 'bg-wheat text-navy'
-              : 'border border-gray-200 text-gray-600 hover:bg-gray-50'
-          }`}
-        >
-          Pasados
-        </Link>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-extrabold text-navy">Partidos</h1>
+        <div className="flex items-center gap-4">
+          <p className="text-sm text-gray-500">
+            Total: {matches.length} partidos
+          </p>
+          <MatchesFilter showAll={showAll} />
+        </div>
       </div>
 
       {matches.length === 0 ? (
-        <p className="text-gray-400 text-sm">No hay partidos en esta pestaña.</p>
+        <p className="text-gray-400 text-sm">No hay partidos registrados.</p>
       ) : (
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-x-auto">
           <table className="w-full text-xs sm:text-sm min-w-[800px]">
@@ -145,12 +125,20 @@ export default async function AdminMatchesPage({ searchParams }: PageProps) {
                     )}
                   </td>
                   <td className="px-2 py-2 sm:px-4 sm:py-3 text-right">
-                    <Link
-                      href={`/admin/matches/${m.id}/attendance`}
-                      className="text-xs px-3 py-1.5 rounded bg-navy text-cream hover:bg-navy-light"
-                    >
-                      Asistencia
-                    </Link>
+                    <div className="flex gap-2 justify-end">
+                      <Link
+                        href={`/admin/matches/${m.id}/attendance`}
+                        className="text-xs px-3 py-1.5 rounded bg-navy text-cream hover:bg-navy-light"
+                      >
+                        Asistencia
+                      </Link>
+                      <Link
+                        href={`/admin/matches/${m.id}/info`}
+                        className="text-xs px-3 py-1.5 rounded border border-navy text-navy hover:bg-gray-50"
+                      >
+                        Más Info
+                      </Link>
+                    </div>
                   </td>
                 </tr>
                 )

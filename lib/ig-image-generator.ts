@@ -253,8 +253,8 @@ export async function generateResultImage(
 
   const composites: sharp.OverlayOptions[] = [
     { input: overlaySvg, top: 0, left: 0 },
-    { input: homeLogo, top: 520, left: Math.floor(SIZE / 2 - 200 - logoSize / 2) },
-    { input: awayLogo, top: 520, left: Math.floor(SIZE / 2 + 200 - logoSize / 2) },
+    { input: homeLogo, top: 500, left: Math.floor(SIZE / 2 - 200 - logoSize / 2) },
+    { input: awayLogo, top: 500, left: Math.floor(SIZE / 2 + 200 - logoSize / 2) },
   ]
 
   if (beersIcon) {
@@ -283,6 +283,8 @@ interface StandingsRow {
   won: number
   drawn: number
   lost: number
+  goalsFor: number
+  goalsAgainst: number
   points: number
   isACSED: boolean
 }
@@ -293,10 +295,16 @@ interface ScorerInfo {
   minute?: number | null
 }
 
+interface AssistInfo {
+  name: string
+  assists: number
+}
+
 export async function generateStandingsImage(
   background: string | Buffer | null,
   standings: StandingsRow[],
   scorers: ScorerInfo[],
+  assists: AssistInfo[] = [],
 ): Promise<Buffer> {
   const [bg, footerLogo] = await Promise.all([
     loadBackground(background || getDefaultTemplatePath()),
@@ -306,7 +314,7 @@ export async function generateStandingsImage(
   const rowHeight = 42
   const tableStartY = 250
   const headerY = 195
-  const colPos = { pos: 120, name: 170, pj: 620, pg: 690, pe: 760, pp: 830, pts: 920 }
+  const colPos = { pos: 120, name: 170, pj: 580, pg: 640, pe: 700, pp: 760, gf: 820, gc: 880, pts: 950 }
 
   let tableRows = ''
   standings.forEach((row, i) => {
@@ -327,13 +335,21 @@ export async function generateStandingsImage(
       ${textNode({ x: colPos.pg, y, text: String(row.won), attrs: mk(20, weight, 'middle') })}
       ${textNode({ x: colPos.pe, y, text: String(row.drawn), attrs: mk(20, weight, 'middle') })}
       ${textNode({ x: colPos.pp, y, text: String(row.lost), attrs: mk(20, weight, 'middle') })}
+      ${textNode({ x: colPos.gf, y, text: String(row.goalsFor), attrs: mk(20, weight, 'middle') })}
+      ${textNode({ x: colPos.gc, y, text: String(row.goalsAgainst), attrs: mk(20, weight, 'middle') })}
       ${textNode({ x: colPos.pts, y, text: String(row.points), attrs: mk(22, 'bold', 'middle') })}
     `
   })
 
   const scorersStartY = tableStartY + standings.length * rowHeight + 60
   let scorersSection = ''
+
   if (scorers.length > 0) {
+    const use2Columns = scorers.length >= 5
+    const colWidth = use2Columns ? (SIZE - 160) / 2 : SIZE - 160
+    const leftX = 150
+    const rightX = SIZE / 2 + 50
+
     scorersSection = `
       <rect x="80" y="${scorersStartY - 10}" width="${SIZE - 160}" height="3" fill="${WHEAT}" opacity="0.4"/>
       ${textNode({
@@ -343,21 +359,68 @@ export async function generateStandingsImage(
         attrs: textAttrs({ family: TITLE_FONT, size: 24, weight: 'bold', fill: WHEAT, anchor: 'middle' }),
       })}
     `
+
     scorers.forEach((scorer, i) => {
-      const y = scorersStartY + 75 + i * 36
+      const isLeftColumn = !use2Columns || i % 2 === 0
+      const rowIndex = use2Columns ? Math.floor(i / 2) : i
+      const y = scorersStartY + 75 + rowIndex * 36
+      const x = isLeftColumn ? leftX : rightX
       const minuteStr = scorer.minute ? ` (${scorer.minute}')` : ''
+
       scorersSection += `
         ${textNode({
-          x: 200,
+          x,
           y,
           text: `${escapeXml(scorer.name)}${minuteStr}`,
           attrs: textAttrs({ family: BODY_FONT, size: 20, fill: CREAM }),
         })}
         ${textNode({
-          x: SIZE - 200,
+          x: x + (use2Columns ? 340 : 730),
           y,
           text: `${scorer.goals} ${scorer.goals === 1 ? 'gol' : 'goles'}`,
           attrs: textAttrs({ family: BODY_FONT, size: 20, weight: 'bold', fill: WHEAT, anchor: 'end' }),
+        })}
+      `
+    })
+  }
+
+  // Calculate where assists section starts
+  const scorersRows = scorers.length >= 5 ? Math.ceil(scorers.length / 2) : scorers.length
+  const assistsStartY = scorersStartY + (scorers.length > 0 ? 75 + scorersRows * 36 + 50 : 0)
+  let assistsSection = ''
+
+  if (assists.length > 0) {
+    const leftX = 150
+    const rightX = SIZE / 2 + 50
+
+    assistsSection = `
+      <rect x="80" y="${assistsStartY - 10}" width="${SIZE - 160}" height="3" fill="${WHEAT}" opacity="0.4"/>
+      ${textNode({
+        x: SIZE / 2,
+        y: assistsStartY + 30,
+        text: 'ASISTENCIAS',
+        attrs: textAttrs({ family: TITLE_FONT, size: 20, weight: 'bold', fill: WHEAT_LIGHT, anchor: 'middle' }),
+      })}
+    `
+
+    assists.forEach((assist, i) => {
+      const isLeftColumn = i % 2 === 0
+      const rowIndex = Math.floor(i / 2)
+      const y = assistsStartY + 60 + rowIndex * 32
+      const x = isLeftColumn ? leftX : rightX
+
+      assistsSection += `
+        ${textNode({
+          x,
+          y,
+          text: escapeXml(assist.name),
+          attrs: textAttrs({ family: BODY_FONT, size: 16, fill: CREAM }),
+        })}
+        ${textNode({
+          x: x + 340,
+          y,
+          text: String(assist.assists),
+          attrs: textAttrs({ family: BODY_FONT, size: 18, weight: 'bold', fill: WHEAT_LIGHT, anchor: 'end' }),
         })}
       `
     })
@@ -383,12 +446,15 @@ export async function generateStandingsImage(
       ${header(colPos.pg, 'G', 'middle')}
       ${header(colPos.pe, 'E', 'middle')}
       ${header(colPos.pp, 'P', 'middle')}
+      ${header(colPos.gf, 'GF', 'middle')}
+      ${header(colPos.gc, 'GC', 'middle')}
       ${header(colPos.pts, 'Pts', 'middle')}
 
       <rect x="80" y="${headerY + 12}" width="${SIZE - 160}" height="1" fill="${CREAM}" opacity="0.3"/>
 
       ${tableRows}
       ${scorersSection}
+      ${assistsSection}
       ${svgFooter()}
     </svg>
   `
