@@ -13,6 +13,15 @@ interface Article {
   emailSentAt: string | null
 }
 
+interface Match {
+  id: number
+  date: string
+  homeTeam: { name: string } | null
+  awayTeam: { name: string } | null
+  homeScore: number | null
+  awayScore: number | null
+}
+
 interface ArticleDetail {
   id: number
   title: string
@@ -56,6 +65,10 @@ export default function AdminNewsPage() {
   const [loading, setLoading] = useState(true)
   const [actionId, setActionId] = useState<number | null>(null)
 
+  const [matches, setMatches] = useState<Match[]>([])
+  const [selectedMatchId, setSelectedMatchId] = useState<number | null>(null)
+  const [generatingNews, setGeneratingNews] = useState(false)
+
   const [editingArticle, setEditingArticle] = useState<ArticleDetail | null>(null)
   const [editTitle, setEditTitle] = useState('')
   const [editContent, setEditContent] = useState('')
@@ -79,7 +92,17 @@ export default function AdminNewsPage() {
     setLoading(false)
   }
 
-  useEffect(() => { fetchArticles() }, [])
+  async function fetchMatches() {
+    const res = await fetch('/api/instagram/matches')
+    const data = await res.json()
+    // Use 'played' matches (already have results)
+    setMatches(data.played ?? [])
+  }
+
+  useEffect(() => {
+    fetchArticles()
+    fetchMatches()
+  }, [])
 
   async function togglePublish(article: Article) {
     setActionId(article.id)
@@ -180,6 +203,38 @@ export default function AdminNewsPage() {
     }
   }
 
+  async function generateNewsForMatch() {
+    if (!selectedMatchId) {
+      alert('Selecciona un partido primero')
+      return
+    }
+
+    setGeneratingNews(true)
+    try {
+      const res = await fetch('/api/admin/news/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ matchId: selectedMatchId }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        alert(data.error || 'Error al generar noticia')
+        return
+      }
+
+      const data = await res.json()
+      await fetchArticles()
+      setSelectedMatchId(null)
+      alert(data.updated ? 'Noticia regenerada exitosamente' : 'Noticia generada exitosamente')
+    } catch (err) {
+      console.error('Error generating news:', err)
+      alert('Error al generar noticia')
+    } finally {
+      setGeneratingNews(false)
+    }
+  }
+
   async function saveEdit() {
     if (!editingArticle) return
     setEditSaving(true)
@@ -246,6 +301,44 @@ export default function AdminNewsPage() {
         >
           + Crear Noticia
         </button>
+      </div>
+
+      {/* Generate news from match */}
+      <div className="mb-6 bg-wheat/20 border border-wheat rounded-lg p-4">
+        <h2 className="text-sm font-semibold text-navy mb-3">Generar noticia de un partido</h2>
+        <div className="flex items-end gap-3">
+          <div className="flex-1">
+            <label htmlFor="match-select" className="block text-xs text-gray-600 mb-1">
+              Seleccionar partido
+            </label>
+            <select
+              id="match-select"
+              value={selectedMatchId ?? ''}
+              onChange={e => setSelectedMatchId(e.target.value ? parseInt(e.target.value) : null)}
+              disabled={generatingNews}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-navy/30 disabled:opacity-50"
+            >
+              <option value="">-- Selecciona un partido --</option>
+              {matches.map(m => {
+                const homeTeam = m.homeTeam?.name ?? 'TBD'
+                const awayTeam = m.awayTeam?.name ?? 'TBD'
+                const date = new Date(m.date).toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit' })
+                return (
+                  <option key={m.id} value={m.id}>
+                    {date} - {homeTeam} {m.homeScore} vs {m.awayScore} {awayTeam}
+                  </option>
+                )
+              })}
+            </select>
+          </div>
+          <button
+            onClick={generateNewsForMatch}
+            disabled={!selectedMatchId || generatingNews}
+            className="px-4 py-2 bg-navy text-cream rounded-lg font-semibold hover:bg-navy-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+          >
+            {generatingNews ? 'Generando...' : 'Generar noticia'}
+          </button>
+        </div>
       </div>
 
       {sendResult && (
