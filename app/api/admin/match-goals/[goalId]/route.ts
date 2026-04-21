@@ -38,17 +38,35 @@ export async function PATCH(
       return NextResponse.json({ error: 'Goal not found' }, { status: 404 })
     }
 
-    // Prepare update data
+    // Prepare update data - update BOTH leaguePlayerId AND rosterPlayerId
     const updateData: {
       leaguePlayerId?: number
+      rosterPlayerId?: number | null
       assistLeaguePlayerId?: number | null
+      assistRosterPlayerId?: number | null
     } = {}
 
     if ('leaguePlayerId' in body) {
       updateData.leaguePlayerId = body.leaguePlayerId
+      // Find roster player with this leaguePlayerId
+      const rosterPlayer = await prisma.player.findUnique({
+        where: { leaguePlayerId: body.leaguePlayerId },
+        select: { id: true },
+      })
+      updateData.rosterPlayerId = rosterPlayer?.id || null
     }
     if ('assistLeaguePlayerId' in body) {
       updateData.assistLeaguePlayerId = body.assistLeaguePlayerId
+      // Find roster player with this leaguePlayerId
+      if (body.assistLeaguePlayerId) {
+        const assistRosterPlayer = await prisma.player.findUnique({
+          where: { leaguePlayerId: body.assistLeaguePlayerId },
+          select: { id: true },
+        })
+        updateData.assistRosterPlayerId = assistRosterPlayer?.id || null
+      } else {
+        updateData.assistRosterPlayerId = null
+      }
     }
 
     // Update the goal

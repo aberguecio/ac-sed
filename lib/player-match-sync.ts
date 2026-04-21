@@ -1,7 +1,7 @@
 import { prisma } from './db'
 
 // Sincroniza goles/asistencias/tarjetas de MatchGoal/MatchCard hacia PlayerMatch agregado por partido.
-// Mapea leaguePlayerId a Player.id usando Player.leaguePlayerId.
+// Usa rosterPlayerId directamente desde MatchGoal/MatchCard.
 //
 // Regla de red card: true si existe cualquier MatchCard con cardType='red' O si yellowCards >= 2.
 // No sobreescribe attendanceStatus/rating/notes (data manual).
@@ -12,53 +12,41 @@ export async function syncPlayerMatchEventsForMatch(matchId: number): Promise<{
   created: number
   skipped: number
 }> {
-  // Get all roster players with leaguePlayerId to map league IDs to roster IDs
-  const players = await prisma.player.findMany({
-    where: { leaguePlayerId: { not: null } },
-    select: { id: true, leaguePlayerId: true },
-  })
-  const leagueToRoster = new Map(players.map(p => [p.leaguePlayerId!, p.id]))
-
   const [goals, cards] = await Promise.all([
     prisma.matchGoal.findMany({
       where: { matchId },
-      select: { leaguePlayerId: true, assistLeaguePlayerId: true },
+      select: { rosterPlayerId: true, assistRosterPlayerId: true },
     }),
     prisma.matchCard.findMany({
       where: { matchId },
-      select: { leaguePlayerId: true, cardType: true },
+      select: { rosterPlayerId: true, cardType: true },
     }),
   ])
 
   const agg = new Map<number, { goals: number; assists: number; yellowCards: number; hasRed: boolean }>()
 
   for (const g of goals) {
-    // Count goals - map leaguePlayerId to roster playerId
-    const scorerRosterId = leagueToRoster.get(g.leaguePlayerId)
-    if (scorerRosterId) {
-      const entry = agg.get(scorerRosterId) ?? { goals: 0, assists: 0, yellowCards: 0, hasRed: false }
+    // Count goals using rosterPlayerId directly
+    if (g.rosterPlayerId) {
+      const entry = agg.get(g.rosterPlayerId) ?? { goals: 0, assists: 0, yellowCards: 0, hasRed: false }
       entry.goals += 1
-      agg.set(scorerRosterId, entry)
+      agg.set(g.rosterPlayerId, entry)
     }
-    // Count assists - map assistLeaguePlayerId to roster playerId
-    if (g.assistLeaguePlayerId) {
-      const assisterRosterId = leagueToRoster.get(g.assistLeaguePlayerId)
-      if (assisterRosterId) {
-        const entry = agg.get(assisterRosterId) ?? { goals: 0, assists: 0, yellowCards: 0, hasRed: false }
-        entry.assists += 1
-        agg.set(assisterRosterId, entry)
-      }
+    // Count assists using assistRosterPlayerId directly
+    if (g.assistRosterPlayerId) {
+      const entry = agg.get(g.assistRosterPlayerId) ?? { goals: 0, assists: 0, yellowCards: 0, hasRed: false }
+      entry.assists += 1
+      agg.set(g.assistRosterPlayerId, entry)
     }
   }
 
   for (const c of cards) {
-    // Map leaguePlayerId to roster playerId
-    const cardRosterId = leagueToRoster.get(c.leaguePlayerId)
-    if (cardRosterId) {
-      const entry = agg.get(cardRosterId) ?? { goals: 0, assists: 0, yellowCards: 0, hasRed: false }
+    // Use rosterPlayerId directly
+    if (c.rosterPlayerId) {
+      const entry = agg.get(c.rosterPlayerId) ?? { goals: 0, assists: 0, yellowCards: 0, hasRed: false }
       if (c.cardType === 'yellow') entry.yellowCards += 1
       if (c.cardType === 'red') entry.hasRed = true
-      agg.set(cardRosterId, entry)
+      agg.set(c.rosterPlayerId, entry)
     }
   }
 

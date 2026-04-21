@@ -192,6 +192,8 @@ model Player {
   phoneNumber      String?        @unique
   // Nicknames for personalization in posts, news, AI messages
   nicknames        String[]       @default([])
+  goals            MatchGoal[]    @relation("PlayerGoals")
+  assists          MatchGoal[]    @relation("PlayerAssists")
   cards            MatchCard[]
   playerMatches    PlayerMatch[]
   whatsappMessages WhatsappMessage[]
@@ -293,10 +295,18 @@ model MatchGoal {
   scrapedPlayer   ScrapedPlayer  @relation("GoalScorer", fields: [leaguePlayerId], references: [id], onDelete: Cascade)
   // Assist relation
   assistPlayer    ScrapedPlayer? @relation("GoalAssist", fields: [assistLeaguePlayerId], references: [id], onDelete: SetNull)
+  // Optional link to our roster player (scorer)
+  rosterPlayer    Player?        @relation("PlayerGoals", fields: [rosterPlayerId], references: [id], onDelete: SetNull)
+  rosterPlayerId  Int?
+  // Optional link to our roster player (assister)
+  assistRosterPlayer Player?     @relation("PlayerAssists", fields: [assistRosterPlayerId], references: [id], onDelete: SetNull)
+  assistRosterPlayerId Int?
 
   @@index([matchId])
   @@index([leaguePlayerId])
   @@index([assistLeaguePlayerId])
+  @@index([rosterPlayerId])
+  @@index([assistRosterPlayerId])
 }
 
 model MatchCard {
