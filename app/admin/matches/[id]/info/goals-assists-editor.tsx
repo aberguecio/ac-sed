@@ -157,7 +157,7 @@ export function GoalsAssistsEditor({ matchId, goals, players }: GoalsAssistsEdit
                   className="flex-1 border border-gray-200 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy/20 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {players.filter(p => p.leaguePlayerId).map(player => (
-                    <option key={player.leaguePlayerId} value={player.leaguePlayerId}>
+                    <option key={player.leaguePlayerId} value={player.leaguePlayerId!}>
                       {player.number ? `#${player.number} ` : ''}{player.name}
                     </option>
                   ))}
@@ -178,7 +178,7 @@ export function GoalsAssistsEditor({ matchId, goals, players }: GoalsAssistsEdit
                 >
                   <option value="">Sin asistencia</option>
                   {players.filter(p => p.leaguePlayerId).map(player => (
-                    <option key={player.leaguePlayerId} value={player.leaguePlayerId}>
+                    <option key={player.leaguePlayerId} value={player.leaguePlayerId!}>
                       {player.number ? `#${player.number} ` : ''}{player.name}
                     </option>
                   ))}
