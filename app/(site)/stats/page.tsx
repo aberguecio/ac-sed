@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { StandingsTable } from '@/components/standings-table'
 import { TeamLogo } from '@/components/team-logo'
+import { RoundRobinMatrix } from '@/components/round-robin-matrix'
 import { isACSED } from '@/lib/team-utils'
 
 interface Tournament {
@@ -54,6 +55,8 @@ export default function StatsPage() {
   const [selectedMatchDay, setSelectedMatchDay] = useState<number | null>(null)
   const [headToHead, setHeadToHead] = useState<HeadToHeadRecord[]>([])
   const [loadingHeadToHead, setLoadingHeadToHead] = useState(false)
+  const [allFixtures, setAllFixtures] = useState<any[]>([])
+  const [loadingFixtures, setLoadingFixtures] = useState(false)
 
   async function fetchTournaments() {
     setLoadingTournaments(true)
@@ -151,6 +154,26 @@ export default function StatsPage() {
     setLoadingHeadToHead(false)
   }
 
+  async function fetchAllFixtures() {
+    if (!selectedTournament || !selectedStage) return
+    setLoadingFixtures(true)
+    try {
+      let url = `/api/stats/fixtures?tournamentId=${selectedTournament.id}&stageId=${selectedStage.id}`
+      if (selectedMatchDay !== null && matchDays.length > 0) {
+        const matchDay = matchDays.find(md => md.matchDay === selectedMatchDay)
+        if (matchDay) {
+          url += `&upToDate=${matchDay.date}`
+        }
+      }
+      const res = await fetch(url)
+      const data = await res.json()
+      setAllFixtures(data)
+    } catch (err) {
+      console.error('Error fetching all fixtures:', err)
+    }
+    setLoadingFixtures(false)
+  }
+
   useEffect(() => {
     fetchTournaments()
     fetchHeadToHead()
@@ -166,6 +189,7 @@ export default function StatsPage() {
   useEffect(() => {
     if (selectedStage && selectedMatchDay !== null) {
       fetchStats(false)
+      fetchAllFixtures()
     }
   }, [selectedStage])
 
@@ -173,6 +197,7 @@ export default function StatsPage() {
   useEffect(() => {
     if (selectedStage && selectedMatchDay !== null) {
       fetchStats(true)
+      fetchAllFixtures()
     }
   }, [selectedMatchDay])
 
@@ -344,6 +369,17 @@ export default function StatsPage() {
             <h2 className="text-lg font-bold text-navy px-4 py-3 bg-gray-50">Tabla de Posiciones</h2>
             <StandingsTable standings={stats.standings} />
           </div>
+
+          {/* Round-Robin Matrix */}
+          {allFixtures.length > 0 && stats.standings.length > 0 && (
+            <RoundRobinMatrix standings={stats.standings} allFixtures={allFixtures} />
+          )}
+          {loadingFixtures && allFixtures.length === 0 && (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-8">
+              <div className="h-5 bg-gray-100 animate-pulse mx-4 mt-4 mb-2 rounded" />
+              <div className="h-36 bg-gray-50 animate-pulse mx-4 mb-4 rounded" />
+            </div>
+          )}
 
           {/* Last Match and Next Match (affected by timeline filter) */}
           <div className="grid md:grid-cols-2 gap-6 mb-8">
