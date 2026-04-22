@@ -5,6 +5,10 @@ import { StandingsTable } from '@/components/standings-table'
 import { TeamLogo } from '@/components/team-logo'
 import { RoundRobinMatrix } from '@/components/round-robin-matrix'
 import { isACSED } from '@/lib/team-utils'
+import { PerformanceByMatchChart } from '@/components/charts/performance-by-match-chart'
+import { RadarComparisonChart } from '@/components/charts/radar-comparison-chart'
+import { HistoricalPositionsChart } from '@/components/charts/historical-positions-chart'
+import { HistoricalStreakChart } from '@/components/charts/historical-streak-chart'
 
 interface Tournament {
   id: number
@@ -21,6 +25,7 @@ interface TeamStats {
   standings: any[]
   topScorers: any[]
   teamScorers: any[]
+  teamAssists: any[]
   fixtures: any[]
   analysis: string | null
   goalsFor: number
@@ -57,6 +62,10 @@ export default function StatsPage() {
   const [loadingHeadToHead, setLoadingHeadToHead] = useState(false)
   const [allFixtures, setAllFixtures] = useState<any[]>([])
   const [loadingFixtures, setLoadingFixtures] = useState(false)
+  const [chartsData, setChartsData] = useState<any>(null)
+  const [loadingCharts, setLoadingCharts] = useState(false)
+  const [historicalData, setHistoricalData] = useState<any>(null)
+  const [loadingHistorical, setLoadingHistorical] = useState(false)
 
   async function fetchTournaments() {
     setLoadingTournaments(true)
@@ -174,9 +183,35 @@ export default function StatsPage() {
     setLoadingFixtures(false)
   }
 
+  async function fetchChartsData() {
+    if (!selectedTournament || !selectedStage) return
+    setLoadingCharts(true)
+    try {
+      const res = await fetch(`/api/stats/charts/temporal?tournamentId=${selectedTournament.id}&stageId=${selectedStage.id}`)
+      const data = await res.json()
+      setChartsData(data)
+    } catch (err) {
+      console.error('Error fetching charts data:', err)
+    }
+    setLoadingCharts(false)
+  }
+
+  async function fetchHistoricalData() {
+    setLoadingHistorical(true)
+    try {
+      const res = await fetch('/api/stats/charts/historical')
+      const data = await res.json()
+      setHistoricalData(data)
+    } catch (err) {
+      console.error('Error fetching historical data:', err)
+    }
+    setLoadingHistorical(false)
+  }
+
   useEffect(() => {
     fetchTournaments()
     fetchHeadToHead()
+    fetchHistoricalData()
   }, [])
 
   useEffect(() => {
@@ -185,21 +220,25 @@ export default function StatsPage() {
     }
   }, [selectedStage])
 
-  // Initial load when stage is selected
-  useEffect(() => {
-    if (selectedStage && selectedMatchDay !== null) {
-      fetchStats(false)
-      fetchAllFixtures()
-    }
-  }, [selectedStage])
+  // Track if this is the first load for this stage
+  const [isInitialLoad, setIsInitialLoad] = useState(true)
 
-  // Match day change - use different loading state
+  // Load data when stage or match day changes
   useEffect(() => {
     if (selectedStage && selectedMatchDay !== null) {
-      fetchStats(true)
+      // Use different loading state for match day changes vs initial stage load
+      const isMatchDayChange = !isInitialLoad
+      fetchStats(isMatchDayChange)
       fetchAllFixtures()
+      fetchChartsData()
+      setIsInitialLoad(false)
     }
-  }, [selectedMatchDay])
+  }, [selectedStage, selectedMatchDay])
+
+  // Reset initial load flag when stage changes
+  useEffect(() => {
+    setIsInitialLoad(true)
+  }, [selectedStage])
 
   const goalsPerMatch = stats && stats.matchesPlayed > 0
     ? (stats.goalsFor / stats.matchesPlayed).toFixed(2)
@@ -369,17 +408,6 @@ export default function StatsPage() {
             <h2 className="text-lg font-bold text-navy px-4 py-3 bg-gray-50">Tabla de Posiciones</h2>
             <StandingsTable standings={stats.standings} />
           </div>
-
-          {/* Round-Robin Matrix */}
-          {allFixtures.length > 0 && stats.standings.length > 0 && (
-            <RoundRobinMatrix standings={stats.standings} allFixtures={allFixtures} />
-          )}
-          {loadingFixtures && allFixtures.length === 0 && (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-8">
-              <div className="h-5 bg-gray-100 animate-pulse mx-4 mt-4 mb-2 rounded" />
-              <div className="h-36 bg-gray-50 animate-pulse mx-4 mb-4 rounded" />
-            </div>
-          )}
 
           {/* Last Match and Next Match (affected by timeline filter) */}
           <div className="grid md:grid-cols-2 gap-6 mb-8">
@@ -578,8 +606,66 @@ export default function StatsPage() {
             </div>
           </div>
 
+          {/* Todos Contra Todos + Assists Row */}
+          <div className="grid md:grid-cols-2 gap-6 mb-8 md:items-start">
+            {/* Round-Robin Matrix */}
+            <div className="flex flex-col h-full">
+              {allFixtures.length > 0 && stats.standings.length > 0 ? (
+                <RoundRobinMatrix standings={stats.standings} allFixtures={allFixtures} />
+              ) : loadingFixtures ? (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex-1">
+                  <div className="h-5 bg-gray-100 animate-pulse mx-4 mt-4 mb-2 rounded" />
+                  <div className="h-36 bg-gray-50 animate-pulse mx-4 mb-4 rounded" />
+                </div>
+              ) : null}
+            </div>
+
+            {/* AC SED Assists */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col h-full">
+              <h2 className="text-lg font-bold text-navy px-4 py-3 bg-gray-50">Asistencias AC SED</h2>
+              <div className="p-4 flex-1">
+                {stats.teamAssists && stats.teamAssists.length > 0 ? (
+                  <div className="space-y-2">
+                    {stats.teamAssists.map((assist: any, idx: number) => (
+                      <div key={idx} className="flex justify-between items-center py-2 border-b last:border-0">
+                        <span className="font-semibold">{assist.playerName}</span>
+                        <span className="font-bold text-navy">{assist.assists} asistencia{assist.assists !== 1 ? 's' : ''}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-gray-400 text-center py-8">Sin asistencias registradas</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Temporal Charts Section */}
+          {!loadingCharts && chartsData && (
+            <>
+              <div className="my-8 border-t-4 border-navy pt-4">
+                <h2 className="text-2xl font-extrabold text-navy mb-6">📊 Análisis de la Fase Actual</h2>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-6 mb-8">
+                <PerformanceByMatchChart data={chartsData.performanceByMatch} />
+                <RadarComparisonChart data={chartsData.radarComparison} />
+              </div>
+            </>
+          )}
+
           {/* Historical Stats Divider */}
-          <div className="my-8 border-t border-gray-300"></div>
+          <div className="my-8 border-t-4 border-navy pt-4">
+            <h2 className="text-2xl font-extrabold text-navy mb-6">🏆 Estadísticas Históricas</h2>
+          </div>
+
+          {/* Historical Charts Section */}
+          {!loadingHistorical && historicalData && (
+            <>
+              <HistoricalPositionsChart data={historicalData.positionsTimeline} />
+              <HistoricalStreakChart data={historicalData.streak} />
+            </>
+          )}
 
           {/* Historical Head-to-Head */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">

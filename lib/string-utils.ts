@@ -28,3 +28,30 @@ export function bestLevenshtein(query: string, candidates: string[]): number {
   const q = query.toLowerCase()
   return Math.min(...candidates.map(c => levenshtein(q, c.toLowerCase())))
 }
+
+/**
+ * Cleans up tournament names by removing common prefixes and suffixes.
+ * Removes:
+ * - "Liga B + Lunes, " from the beginning (if present)
+ * - " Rinconada" from the end (if present)
+ *
+ * Examples:
+ * - "Liga B + Lunes, Otoño 2025" → "Otoño 2025"
+ * - "Verano 2024 Rinconada" → "Verano 2024"
+ * - "Liga B + Lunes, Primavera 2025 Rinconada" → "Primavera 2025"
+ */
+export function cleanTournamentName(name: string): string {
+  let cleaned = name
+
+  // Remove "Liga B + Lunes, " prefix
+  if (cleaned.startsWith('Liga B + Lunes, ')) {
+    cleaned = cleaned.substring('Liga B + Lunes, '.length)
+  }
+
+  // Remove " Rinconada" suffix
+  if (cleaned.endsWith(' Rinconada')) {
+    cleaned = cleaned.substring(0, cleaned.length - ' Rinconada'.length)
+  }
+
+  return cleaned
+}

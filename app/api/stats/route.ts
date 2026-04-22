@@ -174,6 +174,39 @@ export async function GET(request: Request) {
         }))
     }
 
+    // Get AC SED assists
+    const assistsQuery = await prisma.matchGoal.findMany({
+      where: {
+        match: {
+          tournamentId,
+          stageId,
+          ...(upToDate && {
+            date: {
+              lte: new Date(upToDate + 'T23:59:59Z')
+            }
+          })
+        },
+        teamName: ACSED_TEAM_NAME,
+        assistLeaguePlayerId: { not: null }
+      },
+      include: {
+        assistPlayer: true
+      }
+    })
+
+    // Count assists per player
+    const assistsMap = new Map<string, number>()
+    assistsQuery.forEach((goal) => {
+      if (goal.assistPlayer) {
+        const playerName = `${goal.assistPlayer.firstName} ${goal.assistPlayer.lastName}`
+        assistsMap.set(playerName, (assistsMap.get(playerName) || 0) + 1)
+      }
+    })
+
+    const teamAssists = Array.from(assistsMap.entries())
+      .map(([playerName, assists]) => ({ playerName, assists }))
+      .sort((a, b) => b.assists - a.assists)
+
     // Generate or get cached analysis
     const dataForHash = {
       standings: standingsData,
@@ -222,6 +255,7 @@ export async function GET(request: Request) {
       standings: standingsForFrontend,
       topScorers,
       teamScorers,
+      teamAssists,
       fixtures,
       analysis,
       goalsFor: acsedStanding.goalsFor,
