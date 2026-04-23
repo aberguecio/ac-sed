@@ -222,7 +222,7 @@ export async function GET(request: Request) {
       // 1. Its scores are null (not played yet), OR
       // 2. If upToDate filter is active and match date is after upToDate
       const isFuture = (match.homeScore === null || match.awayScore === null) ||
-                       (upToDateObj && match.date > upToDateObj)
+                       (upToDateObj !== null && match.date > upToDateObj)
 
       // AC SED data (null if future)
       const acsedGoalsFor = isFuture ? null : (isHome ? match.homeScore! : match.awayScore!)
