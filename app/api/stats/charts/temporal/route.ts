@@ -9,23 +9,57 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const tournamentId = Number(searchParams.get('tournamentId'))
     const stageId = Number(searchParams.get('stageId'))
+    const upToDate = searchParams.get('upToDate') // Optional: filter matches up to this date (ISO string)
 
     if (!tournamentId || !stageId) {
       return NextResponse.json({ error: 'Missing parameters' }, { status: 400 })
     }
 
-    // Get all match days for this tournament/stage
+    // Prepare upToDate filter
+    let upToDateObj: Date | null = null
+    if (upToDate) {
+      upToDateObj = new Date(upToDate)
+      upToDateObj.setDate(upToDateObj.getDate() + 1) // Include matches on the selected date
+    }
+
+    // Get all PLAYED matches for this tournament/stage (filtered by upToDate if provided)
     const allMatches = await prisma.match.findMany({
       where: {
         tournamentId,
         stageId,
         homeScore: { not: null },
         awayScore: { not: null },
+        ...(upToDateObj && {
+          date: { lte: upToDateObj }
+        })
       },
       orderBy: { date: 'asc' },
       select: {
         date: true,
         roundName: true,
+        homeTeamId: true,
+        awayTeamId: true,
+        homeScore: true,
+        awayScore: true,
+        homeTeam: { select: { id: true, name: true } },
+        awayTeam: { select: { id: true, name: true } },
+      },
+    })
+
+    // Get ALL AC SED matches (including future ones) for performanceVsOpponents
+    // Don't filter by upToDate here - we want to show future opponents with averages
+    const allAcsedMatches = await prisma.match.findMany({
+      where: {
+        tournamentId,
+        stageId,
+        OR: [
+          { homeTeam: { name: ACSED_TEAM_NAME } },
+          { awayTeam: { name: ACSED_TEAM_NAME } }
+        ]
+      },
+      orderBy: { date: 'asc' },
+      select: {
+        date: true,
         homeTeamId: true,
         awayTeamId: true,
         homeScore: true,
@@ -42,6 +76,7 @@ export async function GET(request: Request) {
         performanceByMatch: [],
         scorersEvolution: [],
         radarComparison: null,
+        performanceVsOpponents: [],
       })
     }
 
@@ -97,6 +132,16 @@ export async function GET(request: Request) {
       goalsFor: number
       goalsAgainst: number
       result: 'W' | 'D' | 'L'
+    }> = []
+
+    const performanceVsOpponents: Array<{
+      matchDay: number
+      opponent: string
+      acsedGoalsFor: number | null
+      acsedGoalsAgainst: number | null
+      avgGoalsFor: number
+      avgGoalsAgainst: number
+      isFuture: boolean
     }> = []
 
     // Track scorers evolution
@@ -168,6 +213,68 @@ export async function GET(request: Request) {
       })
     }
 
+    // Build performanceVsOpponents from all AC SED matches (played + future)
+    allAcsedMatches.forEach((match, idx) => {
+      const isHome = match.homeTeam?.name === ACSED_TEAM_NAME
+      const opponent = isHome ? match.awayTeam?.name : match.homeTeam?.name
+      const opponentId = isHome ? match.awayTeamId : match.homeTeamId
+      // A match is "future" if:
+      // 1. Its scores are null (not played yet), OR
+      // 2. If upToDate filter is active and match date is after upToDate
+      const isFuture = (match.homeScore === null || match.awayScore === null) ||
+                       (upToDateObj && match.date > upToDateObj)
+
+      // AC SED data (null if future)
+      const acsedGoalsFor = isFuture ? null : (isHome ? match.homeScore! : match.awayScore!)
+      const acsedGoalsAgainst = isFuture ? null : (isHome ? match.awayScore! : match.homeScore!)
+
+      // Calculate average from other teams vs this opponent
+      let avgGoalsFor = 0
+      let avgGoalsAgainst = 0
+
+      if (opponentId) {
+        const opponentMatches = allMatches.filter(m => {
+          const isOpponentHome = m.homeTeamId === opponentId
+          const isOpponentAway = m.awayTeamId === opponentId
+          const isAcsedInMatch = m.homeTeam?.name === ACSED_TEAM_NAME || m.awayTeam?.name === ACSED_TEAM_NAME
+          return (isOpponentHome || isOpponentAway) && !isAcsedInMatch
+        })
+
+        if (opponentMatches.length > 0) {
+          let totalGoalsFor = 0
+          let totalGoalsAgainst = 0
+
+          opponentMatches.forEach(m => {
+            const opponentIsHome = m.homeTeamId === opponentId
+            if (opponentIsHome) {
+              totalGoalsFor += m.awayScore || 0
+              totalGoalsAgainst += m.homeScore || 0
+            } else {
+              totalGoalsFor += m.homeScore || 0
+              totalGoalsAgainst += m.awayScore || 0
+            }
+          })
+
+          avgGoalsFor = totalGoalsFor / opponentMatches.length
+          avgGoalsAgainst = totalGoalsAgainst / opponentMatches.length
+        } else if (!isFuture && acsedGoalsFor !== null && acsedGoalsAgainst !== null) {
+          // No other matches, use AC SED's data if played
+          avgGoalsFor = acsedGoalsFor
+          avgGoalsAgainst = acsedGoalsAgainst
+        }
+      }
+
+      performanceVsOpponents.push({
+        matchDay: idx + 1,
+        opponent: opponent || 'Unknown',
+        acsedGoalsFor,
+        acsedGoalsAgainst,
+        avgGoalsFor,
+        avgGoalsAgainst,
+        isFuture,
+      })
+    })
+
     // Format scorers evolution
     const scorersEvolution = Array.from(scorersMap.entries()).map(([name, data]) => ({
       playerName: name,
@@ -191,6 +298,7 @@ export async function GET(request: Request) {
         performanceByMatch,
         scorersEvolution,
         radarComparison: null,
+        performanceVsOpponents,
       })
     }
 
@@ -201,7 +309,10 @@ export async function GET(request: Request) {
       goalsAgainst: latestStandings.reduce((sum, s) => sum + s.goalsAgainst, 0) / totalTeams,
       points: latestStandings.reduce((sum, s) => sum + s.points, 0) / totalTeams,
       won: latestStandings.reduce((sum, s) => sum + s.won, 0) / totalTeams,
+      matchesPlayed: latestStandings.reduce((sum, s) => sum + s.won + s.drawn + s.lost, 0) / totalTeams,
     }
+
+    const acsedMatchesPlayed = acsedStanding.won + acsedStanding.drawn + acsedStanding.lost
 
     const radarComparison = {
       acsed: {
@@ -209,6 +320,7 @@ export async function GET(request: Request) {
         goalsAgainst: acsedStanding.goalsAgainst,
         points: acsedStanding.points,
         won: acsedStanding.won,
+        matchesPlayed: acsedMatchesPlayed,
       },
       divisionAvg,
     }
@@ -219,6 +331,7 @@ export async function GET(request: Request) {
       performanceByMatch,
       scorersEvolution,
       radarComparison,
+      performanceVsOpponents,
     })
   } catch (err) {
     console.error('Charts temporal error:', err)

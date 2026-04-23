@@ -42,7 +42,7 @@ export function HistoricalPositionsChart({ data }: Props) {
     return (
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-8">
         <h2 className="text-lg font-bold text-navy px-4 py-3 bg-gray-50">
-          🏆 Evolución Histórica de Posiciones (Por Partido)
+          Evolución Histórica de Posiciones (Por Partido)
         </h2>
         <div className="p-4">
           <p className="text-gray-400 text-center py-8">No hay datos disponibles</p>
@@ -121,7 +121,7 @@ export function HistoricalPositionsChart({ data }: Props) {
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-8">
       <h2 className="text-lg font-bold text-navy px-4 py-3 bg-gray-50">
-        🏆 Evolución Histórica de Posiciones (Por Partido)
+        Evolución Histórica de Posiciones (Por Partido)
       </h2>
       <div className="p-4">
         <div className="overflow-x-auto overflow-y-hidden -mx-4 px-4">

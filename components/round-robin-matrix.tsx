@@ -126,9 +126,9 @@ export function RoundRobinMatrix({ standings, allFixtures }: Props) {
   const tableMinWidth = rowHeaderWidth + teams.length * cellSize
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-8">
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col">
       <h2 className="text-lg font-bold text-navy px-4 py-3 bg-gray-50">Todos Contra Todos</h2>
-      <div className="overflow-x-auto p-4">
+      <div className="overflow-x-auto p-4 flex-1 min-h-[300px]">
         <table className="border-collapse" style={{ minWidth: `${tableMinWidth}px` }}>
           <thead>
             <tr>

@@ -5,8 +5,7 @@ import { StandingsTable } from '@/components/standings-table'
 import { TeamLogo } from '@/components/team-logo'
 import { RoundRobinMatrix } from '@/components/round-robin-matrix'
 import { isACSED } from '@/lib/team-utils'
-import { PerformanceByMatchChart } from '@/components/charts/performance-by-match-chart'
-import { RadarComparisonChart } from '@/components/charts/radar-comparison-chart'
+import { BidirectionalPerformanceChart } from '@/components/charts/bidirectional-performance-chart'
 import { HistoricalPositionsChart } from '@/components/charts/historical-positions-chart'
 import { HistoricalStreakChart } from '@/components/charts/historical-streak-chart'
 
@@ -187,7 +186,18 @@ export default function StatsPage() {
     if (!selectedTournament || !selectedStage) return
     setLoadingCharts(true)
     try {
-      const res = await fetch(`/api/stats/charts/temporal?tournamentId=${selectedTournament.id}&stageId=${selectedStage.id}`)
+      // Build query params
+      let url = `/api/stats/charts/temporal?tournamentId=${selectedTournament.id}&stageId=${selectedStage.id}`
+
+      // Add upToDate filter if a specific match day is selected
+      if (selectedMatchDay !== null && matchDays.length > 0) {
+        const matchDay = matchDays.find(md => md.matchDay === selectedMatchDay)
+        if (matchDay) {
+          url += `&upToDate=${matchDay.date}`
+        }
+      }
+
+      const res = await fetch(url)
       const data = await res.json()
       setChartsData(data)
     } catch (err) {
@@ -607,23 +617,23 @@ export default function StatsPage() {
           </div>
 
           {/* Todos Contra Todos + Assists Row */}
-          <div className="grid md:grid-cols-2 gap-6 mb-8 md:items-start">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
             {/* Round-Robin Matrix */}
-            <div className="flex flex-col h-full">
-              {allFixtures.length > 0 && stats.standings.length > 0 ? (
+            {allFixtures.length > 0 && stats.standings.length > 0 ? (
+              <div className="overflow-hidden">
                 <RoundRobinMatrix standings={stats.standings} allFixtures={allFixtures} />
-              ) : loadingFixtures ? (
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex-1">
-                  <div className="h-5 bg-gray-100 animate-pulse mx-4 mt-4 mb-2 rounded" />
-                  <div className="h-36 bg-gray-50 animate-pulse mx-4 mb-4 rounded" />
-                </div>
-              ) : null}
-            </div>
+              </div>
+            ) : loadingFixtures ? (
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div className="h-5 bg-gray-100 animate-pulse mx-4 mt-4 mb-2 rounded" />
+                <div className="h-36 bg-gray-50 animate-pulse mx-4 mb-4 rounded" />
+              </div>
+            ) : null}
 
             {/* AC SED Assists */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col h-full">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col">
               <h2 className="text-lg font-bold text-navy px-4 py-3 bg-gray-50">Asistencias AC SED</h2>
-              <div className="p-4 flex-1">
+              <div className="p-4 flex-1 min-h-[300px]">
                 {stats.teamAssists && stats.teamAssists.length > 0 ? (
                   <div className="space-y-2">
                     {stats.teamAssists.map((assist: any, idx: number) => (
@@ -642,21 +652,12 @@ export default function StatsPage() {
 
           {/* Temporal Charts Section */}
           {!loadingCharts && chartsData && (
-            <>
-              <div className="my-8 border-t-4 border-navy pt-4">
-                <h2 className="text-2xl font-extrabold text-navy mb-6">📊 Análisis de la Fase Actual</h2>
-              </div>
-
-              <div className="grid md:grid-cols-2 gap-6 mb-8">
-                <PerformanceByMatchChart data={chartsData.performanceByMatch} />
-                <RadarComparisonChart data={chartsData.radarComparison} />
-              </div>
-            </>
+            <BidirectionalPerformanceChart data={chartsData.performanceVsOpponents} />
           )}
 
           {/* Historical Stats Divider */}
           <div className="my-8 border-t-4 border-navy pt-4">
-            <h2 className="text-2xl font-extrabold text-navy mb-6">🏆 Estadísticas Históricas</h2>
+            <h2 className="text-2xl font-extrabold text-navy mb-6">Estadísticas Históricas</h2>
           </div>
 
           {/* Historical Charts Section */}

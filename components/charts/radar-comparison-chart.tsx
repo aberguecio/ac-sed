@@ -8,12 +8,14 @@ interface RadarData {
     goalsAgainst: number
     points: number
     won: number
+    matchesPlayed: number
   }
   divisionAvg: {
     goalsFor: number
     goalsAgainst: number
     points: number
     won: number
+    matchesPlayed: number
   }
 }
 
@@ -35,26 +37,30 @@ export function RadarComparisonChart({ data }: Props) {
     )
   }
 
+  // Evitar división por cero
+  const acsedMatches = data.acsed.matchesPlayed || 1
+  const divAvgMatches = data.divisionAvg.matchesPlayed || 1
+
   const chartData = [
     {
-      metric: 'Goles a Favor',
-      'AC SED': data.acsed.goalsFor,
-      'Promedio División': data.divisionAvg.goalsFor,
+      metric: 'Goles pp',
+      'AC SED': Number((data.acsed.goalsFor / acsedMatches).toFixed(2)),
+      'Promedio División': Number((data.divisionAvg.goalsFor / divAvgMatches).toFixed(2)),
     },
     {
-      metric: 'Puntos',
-      'AC SED': data.acsed.points,
-      'Promedio División': data.divisionAvg.points,
+      metric: 'Puntos pp',
+      'AC SED': Number((data.acsed.points / acsedMatches).toFixed(2)),
+      'Promedio División': Number((data.divisionAvg.points / divAvgMatches).toFixed(2)),
     },
     {
-      metric: 'Victorias',
-      'AC SED': data.acsed.won,
-      'Promedio División': data.divisionAvg.won,
+      metric: 'Efectividad',
+      'AC SED': Number(((data.acsed.points / (acsedMatches * 3)) * 10).toFixed(2)),
+      'Promedio División': Number(((data.divisionAvg.points / (divAvgMatches * 3)) * 10).toFixed(2)),
     },
     {
-      metric: 'Defensa',
-      'AC SED': Math.max(0, 10 - data.acsed.goalsAgainst), // Invertir para que más sea mejor
-      'Promedio División': Math.max(0, 10 - data.divisionAvg.goalsAgainst),
+      metric: 'Ratio GF/GC',
+      'AC SED': Number((data.acsed.goalsFor / (data.acsed.goalsAgainst || 1)).toFixed(2)),
+      'Promedio División': Number((data.divisionAvg.goalsFor / (data.divisionAvg.goalsAgainst || 1)).toFixed(2)),
     },
   ]
 
@@ -93,9 +99,9 @@ export function RadarComparisonChart({ data }: Props) {
             />
           </RadarChart>
         </ResponsiveContainer>
-        <div className="mt-4 text-center text-sm text-gray-600">
+        <div className="mt-4 text-center text-xs md:text-sm text-gray-600">
           <p>
-            Comparación de estadísticas clave de AC SED versus el promedio de todos los equipos de la división
+            <strong>Goles pp:</strong> Goles por partido · <strong>Puntos pp:</strong> Puntos por partido · <strong>Efectividad:</strong> % puntos obtenidos vs posibles (escala 0-10) · <strong>Ratio GF/GC:</strong> Goles a favor / Goles en contra
           </p>
         </div>
       </div>
