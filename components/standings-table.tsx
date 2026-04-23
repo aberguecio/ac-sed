@@ -20,13 +20,14 @@ export function StandingsTable({ standings, highlightTeam = 'ACSED' }: Props) {
           <tr className="bg-navy text-cream text-left">
             <th className="px-3 py-2 w-8">#</th>
             <th className="px-3 py-2">Equipo</th>
+            <th className="px-3 py-2 text-center font-bold">Pts</th>
             <th className="px-3 py-2 text-center">PJ</th>
             <th className="px-3 py-2 text-center">PG</th>
             <th className="px-3 py-2 text-center">PE</th>
             <th className="px-3 py-2 text-center">PP</th>
             <th className="px-3 py-2 text-center">GF</th>
             <th className="px-3 py-2 text-center">GC</th>
-            <th className="px-3 py-2 text-center font-bold">Pts</th>
+            <th className="px-3 py-2 text-center">DG</th>
           </tr>
         </thead>
         <tbody>
@@ -55,13 +56,14 @@ export function StandingsTable({ standings, highlightTeam = 'ACSED' }: Props) {
                     {isAcsed ? <span className="text-navy font-bold">{teamName}</span> : teamName}
                   </div>
                 </td>
+                <td className="px-3 py-2 text-center font-bold text-navy">{s.points}</td>
                 <td className="px-3 py-2 text-center">{s.played}</td>
                 <td className="px-3 py-2 text-center">{s.won}</td>
                 <td className="px-3 py-2 text-center">{s.drawn}</td>
                 <td className="px-3 py-2 text-center">{s.lost}</td>
                 <td className="px-3 py-2 text-center">{s.goalsFor}</td>
                 <td className="px-3 py-2 text-center">{s.goalsAgainst}</td>
-                <td className="px-3 py-2 text-center font-bold text-navy">{s.points}</td>
+                <td className="px-3 py-2 text-center">{s.goalsFor - s.goalsAgainst}</td>
               </tr>
             )
           })}
