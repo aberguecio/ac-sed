@@ -434,3 +434,25 @@ model BotConfig {
   aiAllowDms Boolean  @default(false)
   updatedAt  DateTime @updatedAt
 }
+
+// Configurable cron jobs. Each row is a job definition keyed by `key`
+// (matched against a code-side handler registry). Schedule + enabled flag
+// are editable from the admin UI; the action is hardcoded per key.
+model CronJob {
+  id          Int       @id @default(autoincrement())
+  key         String    @unique // registry key: 'weekly-result' | 'monday-promo'
+  name        String
+  schedule    String    // cron expression, e.g. "0 12 * * 2"
+  timezone    String    @default("America/Santiago")
+  enabled     Boolean   @default(true)
+  lastRunAt   DateTime?
+  lastStatus  String?   // 'success' | 'noop' | 'error'
+  lastMessage String?   @db.Text
+  // Retry window: when set, scheduler also fires the handler at nextRetryAt
+  // (independent of `schedule`). Used by weekly-result for hourly retries
+  // up to 24h when the scraper finds no new match yet.
+  retryUntil  DateTime?
+  nextRetryAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}

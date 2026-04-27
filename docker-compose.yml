@@ -45,22 +45,6 @@ services:
       - "traefik.docker.network=proxy"
       - "monitoring.url=https://acsed.cl"
 
-  cron:
-    image: alpine:3.19
-    container_name: acsed-cron
-    restart: unless-stopped
-    networks:
-      - proxy
-    depends_on:
-      - web
-    env_file: .env
-    command: >
-      sh -c "
-        apk add --no-cache curl &&
-        echo '0 12 * * 2 curl -s -H \"X-Cron-Secret: $${CRON_SECRET}\" http://web:3000/api/cron >> /var/log/cron.log 2>&1' | crontab - &&
-        crond -f -l 6
-      "
-
 networks:
   proxy:
     external: true

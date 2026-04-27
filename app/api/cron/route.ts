@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { runScraper } from '@/lib/scraper'
-import { generateMatchNews, generateInstagramCaption } from '@/lib/ai'
-import { prisma } from '@/lib/db'
-import slugify from 'slugify'
+import { triggerJob } from '@/lib/cron-scheduler'
 
+// Manual trigger kept for backwards compatibility (external curl with secret).
+// Real scheduling lives in lib/cron-scheduler.ts (started from instrumentation.ts)
+// and is configurable from /admin/cronjobs.
 export async function GET(req: NextRequest) {
   const secret = req.headers.get('x-cron-secret')
   if (secret !== process.env.CRON_SECRET) {
@@ -11,56 +11,8 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const { newMatches } = await runScraper('scheduler')
-
-    for (const match of newMatches) {
-      // Fetch match with team relations for news/IG generation
-      const matchWithTeams = await prisma.match.findUnique({
-        where: { id: match.id },
-        include: {
-          homeTeam: { select: { name: true } },
-          awayTeam: { select: { name: true } },
-        },
-      })
-
-      if (!matchWithTeams) continue
-
-      try {
-        const { title, content } = await generateMatchNews(matchWithTeams)
-        const baseSlug = slugify(title, { lower: true, strict: true })
-        const slug = `${baseSlug}-${Date.now()}`
-        await prisma.newsArticle.create({
-          data: {
-            title,
-            slug,
-            content,
-            matchId: match.id,
-            aiProvider: process.env.AI_PROVIDER ?? 'openai',
-            published: false,
-          },
-        })
-      } catch (err) {
-        console.error('Cron: error generating news for match', match.id, err)
-      }
-
-      // Generate Instagram post draft (caption only, images on-demand)
-      try {
-        const caption = await generateInstagramCaption(matchWithTeams, 'result')
-        await prisma.instagramPost.create({
-          data: {
-            caption,
-            postType: 'result',
-            matchId: match.id,
-            aiProvider: process.env.AI_PROVIDER ?? 'openai',
-            status: 'draft',
-          },
-        })
-      } catch (err) {
-        console.error('Cron: error generating IG post for match', match.id, err)
-      }
-    }
-
-    return NextResponse.json({ success: true, newMatches: newMatches.length })
+    await triggerJob('weekly-result')
+    return NextResponse.json({ success: true })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     return NextResponse.json({ error: message }, { status: 500 })
