@@ -1,31 +1,8 @@
 import { generateText } from 'ai'
-import { openai, createOpenAI } from '@ai-sdk/openai'
 import type { Match } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { isACSED } from '@/lib/team-utils'
-
-export function getModel() {
-  const model = process.env.AI_MODEL ?? 'gpt-4o-mini'
-  const apiKey = process.env.AI_API_KEY
-  const baseURL = process.env.AI_BASE_URL
-
-  // structuredOutputs:false disables OpenAI strict mode for both tool schemas
-  // and JSON response_format. Required because our tools use .optional() params,
-  // which strict mode rejects (it demands every property appear in `required`).
-  const settings = { structuredOutputs: false } as const
-
-  // Custom endpoint (LiteLLM, vLLM, LocalAI, etc.)
-  if (baseURL) {
-    const customProvider = createOpenAI({
-      baseURL,
-      apiKey: apiKey ?? 'dummy-key',
-    })
-    return customProvider(model, settings)
-  }
-
-  // Default OpenAI
-  return openai(model, settings)
-}
+import { getAiConfig, getModelForChannel } from '@/lib/ai-config'
 
 // Export this function to reuse in other parts of the app
 export async function getMatchContext(match: Match & { homeTeam?: { name: string } | null; awayTeam?: { name: string } | null }) {
@@ -593,10 +570,13 @@ IMPORTANTE: Solo usa información relevante para la narrativa. Si estamos en mit
 Responde ÚNICAMENTE en este formato JSON (sin markdown):
 {"title": "...", "content": "..."}`
 
+  const cfg = await getAiConfig('newsletter')
   const { text } = await generateText({
-    model: getModel(),
+    model: getModelForChannel(cfg),
     prompt,
-    maxTokens: 800,
+    maxTokens: cfg.maxTokens,
+    temperature: cfg.temperature,
+    ...(cfg.systemPromptOverride ? { system: cfg.systemPromptOverride } : {}),
   })
 
   try {
@@ -665,7 +645,14 @@ Reglas:
 - Tono: hype, de hincha, con humor cervecero si encaja
 ${igRules}`
 
-    const { text } = await generateText({ model: getModel(), prompt, maxTokens: 300 })
+    const cfg = await getAiConfig('instagram')
+    const { text } = await generateText({
+      model: getModelForChannel(cfg),
+      prompt,
+      maxTokens: cfg.maxTokens,
+      temperature: cfg.temperature,
+      ...(cfg.systemPromptOverride ? { system: cfg.systemPromptOverride } : {}),
+    })
     return text.trim()
   }
 
@@ -744,6 +731,13 @@ Reglas:
 - Antes de los hashtags, agrega una línea que diga algo como "El relato completo lo encuentras en acsed.cl" (varía la frase pero siempre menciona acsed.cl)
 ${igRules}`
 
-  const { text } = await generateText({ model: getModel(), prompt, maxTokens: 400 })
+  const cfg = await getAiConfig('instagram')
+  const { text } = await generateText({
+    model: getModelForChannel(cfg),
+    prompt,
+    maxTokens: cfg.maxTokens,
+    temperature: cfg.temperature,
+    ...(cfg.systemPromptOverride ? { system: cfg.systemPromptOverride } : {}),
+  })
   return text.trim()
 }

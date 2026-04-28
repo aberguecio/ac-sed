@@ -14,6 +14,7 @@ const links = [
   { href: '/admin/players', label: 'Jugadores', icon: '👥' },
   { href: '/admin/matches', label: 'Partidos', icon: '🏟️' },
   { href: '/admin/cronjobs', label: 'Cron Jobs', icon: '⏰' },
+  { href: '/admin/ai-config', label: 'IA', icon: '🧠' },
   { href: '/admin/settings', label: 'Configuración', icon: '⚙️' },
 ]
 

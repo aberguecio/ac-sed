@@ -1,8 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { generateCoachAnalysis } from '@/lib/coach-analysis'
 import { calculateStandingsUpToDate, calculateScorersUpToDate } from '@/lib/stats-calculator'
-import crypto from 'crypto'
 
 const ACSED_TEAM_NAME = 'AC Sed'
 
@@ -36,7 +34,6 @@ export async function GET(request: Request) {
         topScorers: [],
         teamScorers: [],
         fixtures: [],
-        analysis: null,
         goalsFor: 0,
         goalsAgainst: 0,
         totalMatches: 5,
@@ -207,31 +204,6 @@ export async function GET(request: Request) {
       .map(([playerName, assists]) => ({ playerName, assists }))
       .sort((a, b) => b.assists - a.assists)
 
-    // Generate or get cached analysis
-    const dataForHash = {
-      standings: standingsData,
-      matchesPlayed,
-      matchesRemaining,
-      teamScorers,
-    }
-    const dataHash = crypto.createHash('md5').update(JSON.stringify(dataForHash)).digest('hex')
-
-    // Check for cached analysis
-    let analysis = null
-    const cachedAnalysis = await prisma.tournamentAnalysis.findFirst({
-      where: {
-        tournamentId,
-        stageId,
-        dataHash,
-      },
-      orderBy: { generatedAt: 'desc' }
-    })
-
-    if (cachedAnalysis) {
-      analysis = cachedAnalysis.content
-    }
-    // If no analysis exists, we'll return null and let the client trigger generation
-
     // Format standings for frontend (add team relation)
     const standingsForFrontend = upToDate
       ? await Promise.all(standingsData.map(async (s: any, index: number) => {
@@ -257,14 +229,12 @@ export async function GET(request: Request) {
       teamScorers,
       teamAssists,
       fixtures,
-      analysis,
       goalsFor: acsedStanding.goalsFor,
       goalsAgainst: acsedStanding.goalsAgainst,
       totalMatches,
       matchesPlayed,
       matchesRemaining,
       groupName,
-      dataHash, // Para que el frontend pueda generar análisis
       tournamentId,
       stageId,
       groupId,

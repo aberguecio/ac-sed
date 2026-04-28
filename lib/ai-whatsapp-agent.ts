@@ -1,6 +1,6 @@
 import { generateText } from 'ai'
-import { getModel } from '@/lib/ai'
-import { whatsappAgentTools } from '@/lib/ai-whatsapp-tools'
+import { getAiConfig, getModelForChannel } from '@/lib/ai-config'
+import { pickEnabledTools } from '@/lib/ai-whatsapp-tools'
 
 const SYSTEM_PROMPT = `Eres el bot del club AC SED (fútbol amateur, Liga B, onda cervecera).
 Respondes preguntas en el grupo de WhatsApp del equipo cuando alguien te menciona.
@@ -45,13 +45,15 @@ export async function answerGroupQuestion(
   question: string
 ): Promise<AnswerGroupQuestionResult> {
   try {
+    const cfg = await getAiConfig('whatsapp')
+    const tools = pickEnabledTools(cfg.enabledTools)
     const { text, toolCalls, finishReason } = await generateText({
-      model: getModel(),
-      system: SYSTEM_PROMPT,
+      model: getModelForChannel(cfg),
+      system: cfg.systemPromptOverride ?? SYSTEM_PROMPT,
       prompt: question,
-      tools: whatsappAgentTools,
-      maxSteps: 15,
-      maxTokens: 600,
+      maxTokens: cfg.maxTokens,
+      temperature: cfg.temperature,
+      ...(tools ? { tools, maxSteps: cfg.maxSteps ?? 15 } : {}),
     })
     return {
       answer: text.trim() || FALLBACK_ANSWER,

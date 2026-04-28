@@ -33,7 +33,6 @@ model Tournament {
   matches   Match[]
   standings Standing[]
   scorers   LeagueScorer[]
-  analyses  TournamentAnalysis[]
 
   @@index([isActive])
 }
@@ -265,23 +264,6 @@ model ScrapeLog {
   @@index([startedAt])
 }
 
-model TournamentAnalysis {
-  id           Int         @id @default(autoincrement())
-  tournamentId Int
-  stageId      Int
-  groupId      Int
-  content      String      @db.Text
-  dataHash     String      // Hash of the data to detect changes
-  aiProvider   String?
-  generatedAt  DateTime    @default(now())
-
-  // Relations
-  tournament   Tournament? @relation(fields: [tournamentId], references: [id])
-
-  @@unique([tournamentId, stageId, groupId])
-  @@index([tournamentId, stageId])
-}
-
 model MatchGoal {
   id              Int            @id @default(autoincrement())
   matchId         Int
@@ -455,4 +437,24 @@ model CronJob {
   nextRetryAt DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+}
+
+// Per-channel AI generation config. One row per channel key
+// ('newsletter' | 'instagram' | 'whatsapp'). Each channel can pick its own
+// provider, model, sampling and (for agentic channels) tool whitelist.
+model AiChannelConfig {
+  id                   Int      @id @default(autoincrement())
+  channel              String   @unique
+  provider             String   @default("openai") // 'openai' | 'anthropic'
+  model                String
+  maxTokens            Int
+  temperature          Float    @default(0.7)
+  // Optional override of the hardcoded system prompt for that channel.
+  // Null = use the per-channel default baked into the code.
+  systemPromptOverride String?  @db.Text
+  // Agentic channel fields (whatsapp). Null on text-only channels.
+  maxSteps             Int?
+  enabledTools         String[] @default([])
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 }

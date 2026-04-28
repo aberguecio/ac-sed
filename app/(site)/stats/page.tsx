@@ -26,7 +26,6 @@ interface TeamStats {
   teamScorers: any[]
   teamAssists: any[]
   fixtures: any[]
-  analysis: string | null
   goalsFor: number
   goalsAgainst: number
   totalMatches: number
