@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { invalidateAiConfig, CHANNEL_KEYS, type ChannelKey } from '@/lib/ai-config'
-import { WHATSAPP_TOOL_KEYS } from '@/lib/ai-whatsapp-tools'
+import { WHATSAPP_TOOL_KEYS } from '@/lib/ai-whatsapp-tool-keys'
 
 export async function PATCH(
   req: NextRequest,

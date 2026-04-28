@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/db'
 import { CHANNEL_KEYS } from '@/lib/ai-config'
-import { WHATSAPP_TOOL_KEYS, WHATSAPP_TOOL_DESCRIPTIONS } from '@/lib/ai-whatsapp-tools'
+import { WHATSAPP_TOOL_KEYS, WHATSAPP_TOOL_DESCRIPTIONS } from '@/lib/ai-whatsapp-tool-keys'
 import { ChannelCard } from './channel-card'
 
 export const dynamic = 'force-dynamic'

@@ -2,7 +2,7 @@ import { openai, createOpenAI } from '@ai-sdk/openai'
 import { anthropic, createAnthropic } from '@ai-sdk/anthropic'
 import type { LanguageModel } from 'ai'
 import { prisma } from '@/lib/db'
-import { WHATSAPP_TOOL_KEYS } from '@/lib/ai-whatsapp-tools'
+import { WHATSAPP_TOOL_KEYS } from '@/lib/ai-whatsapp-tool-keys'
 import type { AiChannelConfig } from '@prisma/client'
 
 export type ChannelKey = 'newsletter' | 'instagram' | 'whatsapp'
