@@ -152,14 +152,16 @@ export function ChannelCard({
             Modelo
             {modelSource && <span className="ml-2 text-gray-400 font-normal">({modelSource})</span>}
           </label>
-          <select
+          <input
+            list={`models-${cfg.channel}`}
             className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded font-mono"
             value={draft.model}
             onChange={e => setDraft({ ...draft, model: e.target.value })}
-          >
-            {!models.includes(draft.model) && <option value={draft.model}>{draft.model} (custom)</option>}
-            {models.map(m => <option key={m} value={m}>{m}</option>)}
-          </select>
+            placeholder="elegí o escribí un model id"
+          />
+          <datalist id={`models-${cfg.channel}`}>
+            {models.map(m => <option key={m} value={m} />)}
+          </datalist>
         </div>
 
         <div>

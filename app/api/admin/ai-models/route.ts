@@ -10,7 +10,18 @@ const ANTHROPIC_MODELS = [
 
 const OPENAI_FALLBACK = ['gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-nano']
 const DEEPSEEK_FALLBACK = ['deepseek-chat', 'deepseek-reasoner']
-const MINIMAX_MODELS = ['MiniMax-M2', 'MiniMax-Text-01', 'abab6.5s-chat']
+// MiniMax doesn't expose a public list endpoint we can hit safely, so this
+// stays as a static suggestion list. The model field in the UI is a
+// freeform input with this list as autocomplete — any other id can be
+// typed in directly.
+const MINIMAX_MODELS = [
+  'MiniMax-M2',
+  'MiniMax-Text-01',
+  'abab6.5s-chat',
+  'abab6.5-chat',
+  'abab6.5t-chat',
+  'abab5.5-chat',
+]
 
 const CHAT_MODEL_RE = /^(gpt-|o1-|o3-|o4-|chatgpt-)/i
 
