@@ -1,5 +1,5 @@
 import { generateText } from 'ai'
-import { getAiConfig, getModelForChannel } from '@/lib/ai-config'
+import { getAiConfig, getModelForChannel, cleanModelText } from '@/lib/ai-config'
 import { pickEnabledTools } from '@/lib/ai-whatsapp-tools'
 import { isOutOfCreditError, notifyAiOutOfCredits } from '@/lib/whatsapp-notifier'
 
@@ -57,7 +57,7 @@ export async function answerGroupQuestion(
       ...(tools ? { tools, maxSteps: cfg.maxSteps ?? 15 } : {}),
     })
     return {
-      answer: text.trim() || FALLBACK_ANSWER,
+      answer: cleanModelText(text) || FALLBACK_ANSWER,
       toolCalls: toolCalls?.length ?? 0,
       finishReason,
     }

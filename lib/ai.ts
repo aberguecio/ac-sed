@@ -2,7 +2,7 @@ import { generateText } from 'ai'
 import type { Match } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { isACSED } from '@/lib/team-utils'
-import { getAiConfig, getModelForChannel } from '@/lib/ai-config'
+import { getAiConfig, getModelForChannel, cleanModelText } from '@/lib/ai-config'
 import { isOutOfCreditError, notifyAiOutOfCredits } from '@/lib/whatsapp-notifier'
 
 // Export this function to reuse in other parts of the app
@@ -581,7 +581,7 @@ Responde ÚNICAMENTE en este formato JSON (sin markdown):
       temperature: cfg.temperature,
       ...(cfg.systemPromptOverride ? { system: cfg.systemPromptOverride } : {}),
     })
-    text = result.text
+    text = cleanModelText(result.text)
   } catch (err) {
     if (isOutOfCreditError(err)) {
       void notifyAiOutOfCredits({ channel: 'newsletter', provider: cfg.provider, model: cfg.model, error: err })
@@ -664,7 +664,7 @@ ${igRules}`
         temperature: cfg.temperature,
         ...(cfg.systemPromptOverride ? { system: cfg.systemPromptOverride } : {}),
       })
-      return text.trim()
+      return cleanModelText(text)
     } catch (err) {
       if (isOutOfCreditError(err)) {
         void notifyAiOutOfCredits({ channel: 'instagram', provider: cfg.provider, model: cfg.model, error: err })
@@ -757,7 +757,7 @@ ${igRules}`
       temperature: cfg.temperature,
       ...(cfg.systemPromptOverride ? { system: cfg.systemPromptOverride } : {}),
     })
-    return text.trim()
+    return cleanModelText(text)
   } catch (err) {
     if (isOutOfCreditError(err)) {
       void notifyAiOutOfCredits({ channel: 'instagram', provider: cfg.provider, model: cfg.model, error: err })

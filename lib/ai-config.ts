@@ -10,6 +10,19 @@ export type Provider = 'openai' | 'anthropic' | 'deepseek' | 'minimax'
 
 export const PROVIDERS: Provider[] = ['openai', 'anthropic', 'deepseek', 'minimax']
 
+/**
+ * Strip reasoning/chain-of-thought blocks that some models (deepseek-reasoner,
+ * MiniMax-M2 family, etc.) inline into the response as <think>...</think>.
+ * The ai-sdk does not split these out for OpenAI-compatible providers, so we
+ * sanitise the final text before returning it to users.
+ */
+export function cleanModelText(s: string): string {
+  return s
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
+    .trim()
+}
+
 export const CHANNEL_KEYS: ChannelKey[] = ['newsletter', 'instagram', 'whatsapp']
 
 const cache = new Map<ChannelKey, AiChannelConfig>()
