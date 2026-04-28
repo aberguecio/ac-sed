@@ -89,7 +89,7 @@ async function buildStandingsBuffer(bg: string | null, match: MatchWithTeams) {
 
   const assistMap = new Map<string, { name: string; assists: number }>()
   for (const a of context.goals.filter((g: any) => isACSED(g.teamName) && g.assistLeaguePlayerId)) {
-    const rosterPlayer = leagueToPlayer.get(a.assistLeaguePlayerId)
+    const rosterPlayer = leagueToPlayer.get(a.assistLeaguePlayerId as number)
     const name = rosterPlayer?.name || (a.assistPlayer ? `${a.assistPlayer.firstName} ${a.assistPlayer.lastName}` : 'Desconocido')
     const existing = assistMap.get(name)
     if (existing) existing.assists++
