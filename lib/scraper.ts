@@ -659,6 +659,23 @@ export async function runScraper(
       },
     })
 
+    // Notify the WhatsApp group for each AC SED match that was scraped
+    // (allNewMatches is already filtered to AC SED). Fire-and-forget.
+    if (allNewMatches.length > 0) {
+      try {
+        const { notifyMatchScraped } = await import('@/lib/whatsapp-notifier')
+        for (const m of allNewMatches) {
+          const fresh = await prisma.match.findUnique({
+            where: { id: m.id },
+            include: { homeTeam: true, awayTeam: true },
+          })
+          if (fresh) await notifyMatchScraped(fresh)
+        }
+      } catch (err) {
+        console.error('[scraper] whatsapp notify failed', err)
+      }
+    }
+
     return { newMatches: allNewMatches, logId: log.id }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)

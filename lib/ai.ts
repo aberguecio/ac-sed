@@ -3,6 +3,7 @@ import type { Match } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { isACSED } from '@/lib/team-utils'
 import { getAiConfig, getModelForChannel } from '@/lib/ai-config'
+import { isOutOfCreditError, notifyAiOutOfCredits } from '@/lib/whatsapp-notifier'
 
 // Export this function to reuse in other parts of the app
 export async function getMatchContext(match: Match & { homeTeam?: { name: string } | null; awayTeam?: { name: string } | null }) {
@@ -571,13 +572,22 @@ Responde ÚNICAMENTE en este formato JSON (sin markdown):
 {"title": "...", "content": "..."}`
 
   const cfg = await getAiConfig('newsletter')
-  const { text } = await generateText({
-    model: getModelForChannel(cfg),
-    prompt,
-    maxTokens: cfg.maxTokens,
-    temperature: cfg.temperature,
-    ...(cfg.systemPromptOverride ? { system: cfg.systemPromptOverride } : {}),
-  })
+  let text: string
+  try {
+    const result = await generateText({
+      model: getModelForChannel(cfg),
+      prompt,
+      maxTokens: cfg.maxTokens,
+      temperature: cfg.temperature,
+      ...(cfg.systemPromptOverride ? { system: cfg.systemPromptOverride } : {}),
+    })
+    text = result.text
+  } catch (err) {
+    if (isOutOfCreditError(err)) {
+      void notifyAiOutOfCredits({ channel: 'newsletter', provider: cfg.provider, model: cfg.model, error: err })
+    }
+    throw err
+  }
 
   try {
     const parsed = JSON.parse(text.trim())
@@ -646,14 +656,21 @@ Reglas:
 ${igRules}`
 
     const cfg = await getAiConfig('instagram')
-    const { text } = await generateText({
-      model: getModelForChannel(cfg),
-      prompt,
-      maxTokens: cfg.maxTokens,
-      temperature: cfg.temperature,
-      ...(cfg.systemPromptOverride ? { system: cfg.systemPromptOverride } : {}),
-    })
-    return text.trim()
+    try {
+      const { text } = await generateText({
+        model: getModelForChannel(cfg),
+        prompt,
+        maxTokens: cfg.maxTokens,
+        temperature: cfg.temperature,
+        ...(cfg.systemPromptOverride ? { system: cfg.systemPromptOverride } : {}),
+      })
+      return text.trim()
+    } catch (err) {
+      if (isOutOfCreditError(err)) {
+        void notifyAiOutOfCredits({ channel: 'instagram', provider: cfg.provider, model: cfg.model, error: err })
+      }
+      throw err
+    }
   }
 
   if (postType === 'custom') {
@@ -732,12 +749,19 @@ Reglas:
 ${igRules}`
 
   const cfg = await getAiConfig('instagram')
-  const { text } = await generateText({
-    model: getModelForChannel(cfg),
-    prompt,
-    maxTokens: cfg.maxTokens,
-    temperature: cfg.temperature,
-    ...(cfg.systemPromptOverride ? { system: cfg.systemPromptOverride } : {}),
-  })
-  return text.trim()
+  try {
+    const { text } = await generateText({
+      model: getModelForChannel(cfg),
+      prompt,
+      maxTokens: cfg.maxTokens,
+      temperature: cfg.temperature,
+      ...(cfg.systemPromptOverride ? { system: cfg.systemPromptOverride } : {}),
+    })
+    return text.trim()
+  } catch (err) {
+    if (isOutOfCreditError(err)) {
+      void notifyAiOutOfCredits({ channel: 'instagram', provider: cfg.provider, model: cfg.model, error: err })
+    }
+    throw err
+  }
 }

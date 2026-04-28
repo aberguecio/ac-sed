@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getMatchContext } from '@/lib/ai'
+import { notifyNewsPublished } from '@/lib/whatsapp-notifier'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -94,10 +95,23 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const body = await req.json()
+  const articleId = parseInt(id)
+
+  const before = await prisma.newsArticle.findUnique({
+    where: { id: articleId },
+    select: { published: true },
+  })
+
   const article = await prisma.newsArticle.update({
-    where: { id: parseInt(id) },
+    where: { id: articleId },
     data: body,
   })
+
+  // Notify the WhatsApp group on the unpublished -> published transition.
+  if (before && !before.published && article.published) {
+    void notifyNewsPublished({ id: article.id, title: article.title, slug: article.slug })
+  }
+
   return NextResponse.json(article)
 }
 

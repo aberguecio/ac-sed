@@ -1,6 +1,7 @@
 import { generateText } from 'ai'
 import { getAiConfig, getModelForChannel } from '@/lib/ai-config'
 import { pickEnabledTools } from '@/lib/ai-whatsapp-tools'
+import { isOutOfCreditError, notifyAiOutOfCredits } from '@/lib/whatsapp-notifier'
 
 const SYSTEM_PROMPT = `Eres el bot del club AC SED (fútbol amateur, Liga B, onda cervecera).
 Respondes preguntas en el grupo de WhatsApp del equipo cuando alguien te menciona.
@@ -44,8 +45,8 @@ const FALLBACK_ANSWER = 'Uy, no pude procesar bien esa pregunta. ¿Podés reform
 export async function answerGroupQuestion(
   question: string
 ): Promise<AnswerGroupQuestionResult> {
+  const cfg = await getAiConfig('whatsapp')
   try {
-    const cfg = await getAiConfig('whatsapp')
     const tools = pickEnabledTools(cfg.enabledTools)
     const { text, toolCalls, finishReason } = await generateText({
       model: getModelForChannel(cfg),
@@ -62,6 +63,9 @@ export async function answerGroupQuestion(
     }
   } catch (err) {
     logAgentError(err)
+    if (isOutOfCreditError(err)) {
+      void notifyAiOutOfCredits({ channel: 'whatsapp', provider: cfg.provider, model: cfg.model, error: err })
+    }
     return { answer: FALLBACK_ANSWER, toolCalls: 0, finishReason: 'error' }
   }
 }

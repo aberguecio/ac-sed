@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { publishSinglePost, publishCarouselPost } from '@/lib/instagram'
+import { notifyInstagramPublished } from '@/lib/whatsapp-notifier'
 
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -47,6 +48,8 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       },
       include: { images: { orderBy: { orderIndex: 'asc' } } },
     })
+
+    void notifyInstagramPublished({ id: updated.id, igMediaId: updated.igMediaId, postType: updated.postType })
 
     return NextResponse.json(updated)
   } catch (err) {
