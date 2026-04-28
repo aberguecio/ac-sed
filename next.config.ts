@@ -2,6 +2,8 @@ import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
   output: 'standalone',
+  // sharp ships native binaries; never bundle it.
+  serverExternalPackages: ['sharp'],
   images: {
     remotePatterns: [
       {
