@@ -633,7 +633,7 @@ export async function generateInstagramCaption(
   const rivalScore = isHome ? match.awayScore : match.homeScore
 
   const context = await getMatchContext(match)
-  const { goals, standingsRows, playerMatches } = context
+  const { goals, standingsRows } = context
 
   // Get roster players to map leaguePlayerId to roster names (for Instagram captions)
   const allPlayers = await prisma.player.findMany({
@@ -701,7 +701,13 @@ ${igRules}`
       ? acsedScore > rivalScore ? 'VICTORIA' : acsedScore < rivalScore ? 'DERROTA' : 'EMPATE'
       : 'RESULTADO'
 
-  const acsedGoals = goals.filter(g => isACSED(g.teamName))
+  // AC SED ownership decided by linked rosterPlayer or scrapedPlayer team,
+  // not the cached teamName (which doesn't update when an admin reassigns
+  // a scorer in the match editor).
+  const isAcsedGoal = (g: typeof goals[number]) =>
+    g.rosterPlayerId != null || g.scrapedPlayer?.teamId === ACSED_TEAM_ID || isACSED(g.teamName)
+
+  const acsedGoals = goals.filter(isAcsedGoal)
   const scorersStr = acsedGoals.length > 0
     ? acsedGoals.map(g => {
         const rosterPlayer = leagueToPlayer.get(g.leaguePlayerId)
@@ -716,17 +722,6 @@ ${igRules}`
         return scorer
       }).join(', ')
     : ''
-
-  // Get top performers from playerMatches
-  const topPerformers = playerMatches
-    .filter(pm => pm.attendanceStatus === 'CONFIRMED' && (pm.goals > 0 || pm.assists > 0))
-    .map(pm => ({
-      name: pm.player.name.split(' ')[0], // First name only
-      goals: pm.goals,
-      assists: pm.assists
-    }))
-    .sort((a, b) => (b.goals + b.assists) - (a.goals + a.assists))
-    .slice(0, 3)
 
   const acsedStanding = standingsRows.find(s => isACSED(s.teamName))
   const standingStr = acsedStanding
@@ -750,12 +745,6 @@ AC SED ${acsedScore ?? '?'} vs ${rivalScore ?? '?'} ${rival}
 AC SED jugó de ${isHome ? 'local' : 'visitante'}
 ${contextStr}
 ${scorersStr ? `Goleadores: ${scorersStr}` : ''}
-${topPerformers.length > 0 ? `Top performers: ${topPerformers.map(p => {
-  const parts = []
-  if (p.goals > 0) parts.push(`${p.goals}G`)
-  if (p.assists > 0) parts.push(`${p.assists}A`)
-  return `${p.name} (${parts.join('+')})`
-}).join(', ')}` : ''}
 ${standingStr ? standingStr : ''}
 
 Reglas:
