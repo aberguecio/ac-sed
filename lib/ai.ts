@@ -707,16 +707,29 @@ ${igRules}`
   const isAcsedGoal = (g: typeof goals[number]) =>
     g.rosterPlayerId != null || g.scrapedPlayer?.teamId === ACSED_TEAM_ID || isACSED(g.teamName)
 
+  // Format an AC SED player for the IG prompt: pass the first name AND any
+  // nicknames so the model can pick one. The IG prompt rules below tell the
+  // model to prefer a nickname (just one) over the first name.
+  const formatIgPlayer = (
+    leaguePlayerId: number,
+    fallbackFirst: string,
+  ): string => {
+    const rp = leagueToPlayer.get(leaguePlayerId)
+    const firstName = rp?.name.split(' ')[0] || fallbackFirst
+    const aliases = rp?.nicknames ?? []
+    return aliases.length > 0
+      ? `${firstName} [apodos: ${aliases.join(' / ')}]`
+      : firstName
+  }
+
   const acsedGoals = goals.filter(isAcsedGoal)
   const scorersStr = acsedGoals.length > 0
     ? acsedGoals.map(g => {
-        const rosterPlayer = leagueToPlayer.get(g.leaguePlayerId)
-        const scorerName = rosterPlayer?.name.split(' ')[0] || g.scrapedPlayer.firstName
+        const scorerName = formatIgPlayer(g.leaguePlayerId, g.scrapedPlayer.firstName)
         const scorer = `${scorerName} ${g.minute ? `(${g.minute}')` : ''}`
 
-        if (g.assistPlayer) {
-          const assisterRosterPlayer = g.assistLeaguePlayerId ? leagueToPlayer.get(g.assistLeaguePlayerId) : null
-          const assisterName = assisterRosterPlayer?.name.split(' ')[0] || g.assistPlayer.firstName
+        if (g.assistPlayer && g.assistLeaguePlayerId) {
+          const assisterName = formatIgPlayer(g.assistLeaguePlayerId, g.assistPlayer.firstName)
           return `${scorer} (asistencia de ${assisterName})`
         }
         return scorer
@@ -750,7 +763,7 @@ ${standingStr ? standingStr : ''}
 Reglas:
 - Máximo 150 palabras
 - Tono: ${tone}
-- Menciona goleadores por nombre de pila si los hay
+- Apodos: cuando un jugador venga como "Nombre [apodos: A / B / C]", mencionálo PREFERENTEMENTE con UN solo apodo (elegí uno que suene bien). Si no querés usar apodo, usá el nombre de pila. NUNCA escribas el nombre seguido de los apodos entre paréntesis ni listes varios apodos juntos. Si un jugador no tiene apodos, usá el nombre de pila.
 - Si hay contexto especial del partido, menciónalo de forma natural
 - Antes de los hashtags, agrega una línea que diga algo como "El relato completo lo encuentras en acsed.cl" (varía la frase pero siempre menciona acsed.cl)
 ${igRules}`
