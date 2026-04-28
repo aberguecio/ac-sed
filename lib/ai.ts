@@ -635,10 +635,12 @@ export async function generateInstagramCaption(
   const context = await getMatchContext(match)
   const { goals, standingsRows } = context
 
-  // Get roster players to map leaguePlayerId to roster names (for Instagram captions)
+  // Get roster players to map leaguePlayerId to roster names + nicknames
+  // (for Instagram captions). The nickname field powers the new
+  // "prefer one nickname" rule in the prompt.
   const allPlayers = await prisma.player.findMany({
     where: { leaguePlayerId: { not: null } },
-    select: { leaguePlayerId: true, name: true },
+    select: { leaguePlayerId: true, name: true, nicknames: true },
   })
   const leagueToPlayer = new Map(allPlayers.map(p => [p.leaguePlayerId!, p]))
 
