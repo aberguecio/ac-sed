@@ -1,7 +1,7 @@
 import { generateText } from 'ai'
 import type { Match } from '@prisma/client'
 import { prisma } from '@/lib/db'
-import { isACSED } from '@/lib/team-utils'
+import { isACSED, ACSED_TEAM_ID } from '@/lib/team-utils'
 import { getAiConfig, getModelForChannel, cleanModelText } from '@/lib/ai-config'
 import { isOutOfCreditError, notifyAiOutOfCredits } from '@/lib/whatsapp-notifier'
 
@@ -256,7 +256,7 @@ export async function generateMatchNews(
 ): Promise<{ title: string; content: string }> {
   const homeTeamName = match.homeTeam?.name ?? 'TBD'
   const awayTeamName = match.awayTeam?.name ?? 'TBD'
-  const isHome = homeTeamName.toUpperCase().includes('ACSED') || homeTeamName.toUpperCase().includes('AC SED')
+  const isHome = isACSED(homeTeamName)
   const rival = isHome ? awayTeamName : homeTeamName
   const acsedScore = isHome ? match.homeScore : match.awayScore
   const rivalScore = isHome ? match.awayScore : match.homeScore
@@ -291,27 +291,44 @@ export async function generateMatchNews(
   })
   const leagueToPlayer = new Map(allPlayers.map(p => [p.leaguePlayerId!, p]))
 
-  // Format goals by team with assists
-  const acsedGoals = goals.filter(g => g.teamName.toUpperCase().includes('ACSED') || g.teamName.toUpperCase().includes('AC SED'))
-  const rivalGoals = goals.filter(g => !g.teamName.toUpperCase().includes('ACSED') && !g.teamName.toUpperCase().includes('AC SED'))
+  // Format a player for the prompt: roster name + nicknames as alternatives.
+  // The prompt rules tell the model to pick ONE form per mention — not list
+  // all of them.
+  const formatPlayer = (
+    leaguePlayerId: number,
+    fallbackFirst: string,
+    fallbackLast: string,
+  ): string => {
+    const rp = leagueToPlayer.get(leaguePlayerId)
+    const realName = rp?.name || `${fallbackFirst} ${fallbackLast}`
+    const aliases = rp?.nicknames ?? []
+    return aliases.length > 0
+      ? `${realName} [alternativas: ${aliases.join(' / ')}]`
+      : realName
+  }
 
-  // Format cards
-  const acsedCards = cards.filter(c => c.teamName.toUpperCase().includes('ACSED') || c.teamName.toUpperCase().includes('AC SED'))
+  // Format goals by team. AC SED ownership is decided by the linked
+  // rosterPlayer or the scrapedPlayer's team, not the cached teamName
+  // string (which doesn't update when the admin reassigns a scorer).
+  const isAcsedEvent = (
+    ev: { teamName: string; rosterPlayerId?: number | null; scrapedPlayer?: { teamId: number | null } | null },
+  ): boolean => {
+    if (ev.rosterPlayerId != null) return true
+    if (ev.scrapedPlayer?.teamId === ACSED_TEAM_ID) return true
+    return isACSED(ev.teamName)
+  }
+
+  const acsedGoals = goals.filter(isAcsedEvent)
+  const rivalGoals = goals.filter(g => !isAcsedEvent(g))
+  const acsedCards = cards.filter(isAcsedEvent)
 
   let goalsInfo = ''
   if (acsedGoals.length > 0) {
     const goalScorers = acsedGoals.map(g => {
-      const rosterPlayer = leagueToPlayer.get(g.leaguePlayerId)
-      const scorerName = rosterPlayer?.name || `${g.scrapedPlayer.firstName} ${g.scrapedPlayer.lastName}`
-      const scorerNicknames = rosterPlayer?.nicknames.length ? ` (apodos: ${rosterPlayer.nicknames.join(', ')})` : ''
-
-      let scorer = `${scorerName}${scorerNicknames}`
-
-      if (g.assistPlayer) {
-        const assisterRosterPlayer = g.assistLeaguePlayerId ? leagueToPlayer.get(g.assistLeaguePlayerId) : null
-        const assisterName = assisterRosterPlayer?.name || `${g.assistPlayer.firstName} ${g.assistPlayer.lastName}`
-        const assisterNicknames = assisterRosterPlayer?.nicknames.length ? ` (apodos: ${assisterRosterPlayer.nicknames.join(', ')})` : ''
-        return `${scorer} (asistencia de ${assisterName}${assisterNicknames})`
+      const scorer = formatPlayer(g.leaguePlayerId, g.scrapedPlayer.firstName, g.scrapedPlayer.lastName)
+      if (g.assistPlayer && g.assistLeaguePlayerId) {
+        const assister = formatPlayer(g.assistLeaguePlayerId, g.assistPlayer.firstName, g.assistPlayer.lastName)
+        return `${scorer} (asistencia de ${assister})`
       }
       return scorer
     }).join(', ')
@@ -327,10 +344,14 @@ export async function generateMatchNews(
     const yellowCards = acsedCards.filter(c => c.cardType === 'yellow')
     const redCards = acsedCards.filter(c => c.cardType === 'red')
     if (yellowCards.length > 0) {
-      cardsInfo += `\n- Tarjetas amarillas AC SED: ${yellowCards.map(c => `${c.scrapedPlayer.firstName} ${c.scrapedPlayer.lastName}`).join(', ')}`
+      cardsInfo += `\n- Tarjetas amarillas AC SED: ${yellowCards
+        .map(c => formatPlayer(c.leaguePlayerId, c.scrapedPlayer.firstName, c.scrapedPlayer.lastName))
+        .join(', ')}`
     }
     if (redCards.length > 0) {
-      cardsInfo += `\n- Tarjetas rojas AC SED: ${redCards.map(c => `${c.scrapedPlayer.firstName} ${c.scrapedPlayer.lastName}`).join(', ')}`
+      cardsInfo += `\n- Tarjetas rojas AC SED: ${redCards
+        .map(c => formatPlayer(c.leaguePlayerId, c.scrapedPlayer.firstName, c.scrapedPlayer.lastName))
+        .join(', ')}`
     }
   }
 
@@ -340,7 +361,7 @@ export async function generateMatchNews(
     const matchSummaries = previousMatches.map(m => {
       const homeTeamName = m.homeTeam?.name ?? 'TBD'
       const awayTeamName = m.awayTeam?.name ?? 'TBD'
-      const isHomeMatch = homeTeamName.toUpperCase().includes('AC SED') || homeTeamName.toUpperCase().includes('ACSED')
+      const isHomeMatch = isACSED(homeTeamName)
       const our = (isHomeMatch ? m.homeScore : m.awayScore) ?? 0
       const their = (isHomeMatch ? m.awayScore : m.homeScore) ?? 0
       const rivalName = isHomeMatch ? awayTeamName : homeTeamName
@@ -354,7 +375,7 @@ export async function generateMatchNews(
   let standingsInfo = ''
   if (standingsRows.length > 0) {
     const acsed = standingsRows.find(s =>
-      s.teamName.toUpperCase().includes('AC SED') || s.teamName.toUpperCase().includes('ACSED')
+      isACSED(s.teamName)
     )
     if (acsed) {
       const totalTeams = standingsRows.length
@@ -373,14 +394,12 @@ export async function generateMatchNews(
   let otherResultsInfo = ''
   if (otherMatchesInRound.length > 0 && standingsRows.length > 0) {
     const acsed = standingsRows.find(s =>
-      s.teamName.toUpperCase().includes('AC SED') || s.teamName.toUpperCase().includes('ACSED')
+      isACSED(s.teamName)
     )
     if (acsed) {
       // Get teams within ±1 position
       const relevantTeams = standingsRows.filter(s =>
-        Math.abs(s.position - acsed.position) <= 1 &&
-        !s.teamName.toUpperCase().includes('AC SED') &&
-        !s.teamName.toUpperCase().includes('ACSED')
+        Math.abs(s.position - acsed.position) <= 1 && !isACSED(s.teamName)
       )
 
       const relevantResults = otherMatchesInRound.filter(m => {
@@ -459,7 +478,7 @@ export async function generateMatchNews(
     if (remaining === 0) {
       // This was the last match of the phase
       const acsed = standingsRows.find(s =>
-        s.teamName.toUpperCase().includes('AC SED') || s.teamName.toUpperCase().includes('ACSED')
+        isACSED(s.teamName)
       )
       if (acsed) {
         const isChampion = acsed.position === 1
@@ -481,7 +500,7 @@ export async function generateMatchNews(
       const nextRivals = upcomingMatches.slice(0, 2).map(m => {
         const homeTeamName = m.homeTeam?.name ?? 'TBD'
         const awayTeamName = m.awayTeam?.name ?? 'TBD'
-        const isHome = homeTeamName.toUpperCase().includes('AC SED') || homeTeamName.toUpperCase().includes('ACSED')
+        const isHome = isACSED(homeTeamName)
         const rivalName = isHome ? awayTeamName : homeTeamName
         const rivalStanding = standingsRows.find(s => s.teamName === rivalName)
         const positionStr = rivalStanding ? ` [${rivalStanding.position}°]` : ''
@@ -491,7 +510,7 @@ export async function generateMatchNews(
       if (remaining <= 2) {
         // Calculate points needed for objectives
         const acsed = standingsRows.find(s =>
-          s.teamName.toUpperCase().includes('AC SED') || s.teamName.toUpperCase().includes('ACSED')
+          isACSED(s.teamName)
         )
         if (acsed) {
           const maxPossiblePoints = acsed.points + (remaining * 3)
@@ -525,21 +544,19 @@ export async function generateMatchNews(
     }
   }
 
-  // Format attendance info
+  // Attendance summary. Source: PlayerMatch.attendanceStatus only — goals
+  // and assists for the prompt come exclusively from MatchGoal (above) to
+  // avoid duplicate / stale attribution when an admin reassigns a scorer.
   let attendanceInfo = ''
   const confirmedPlayers = playerMatches.filter(pm => pm.attendanceStatus === 'CONFIRMED')
+  const latePlayers = playerMatches.filter(pm => pm.attendanceStatus === 'LATE')
+  const visitingPlayers = playerMatches.filter(pm => pm.attendanceStatus === 'VISITING')
   if (confirmedPlayers.length > 0) {
-    const topPerformers = confirmedPlayers
-      .filter(pm => pm.goals > 0 || pm.assists > 0)
-      .map(pm => {
-        const parts = []
-        if (pm.goals > 0) parts.push(`${pm.goals} gol${pm.goals > 1 ? 'es' : ''}`)
-        if (pm.assists > 0) parts.push(`${pm.assists} asistencia${pm.assists > 1 ? 's' : ''}`)
-        return `${pm.player.name} (${parts.join(', ')})`
-      })
-    if (topPerformers.length > 0) {
-      attendanceInfo = `\n- Rendimiento destacado: ${topPerformers.join(', ')}`
-    }
+    const extras: string[] = []
+    if (latePlayers.length > 0) extras.push(`${latePlayers.length} llegaron tarde`)
+    if (visitingPlayers.length > 0) extras.push(`${visitingPlayers.length} de visita`)
+    const tail = extras.length > 0 ? ` (${extras.join(', ')})` : ''
+    attendanceInfo = `\n- Asistencia confirmada: ${confirmedPlayers.length} jugadores${tail}`
   }
 
   // Add match context if available
@@ -559,6 +576,7 @@ Genera:
 2. Una CRÓNICA de aproximadamente 300 palabras que incluya:
    - Análisis del resultado (${result}) y cómo se desarrolló el partido
    - Menciona a los goleadores específicos si los hay
+   - Apodos: cuando un jugador venga como "Nombre [alternativas: A / B / C]", elegí UNA forma para referirte a él en cada mención (su nombre real O UN solo apodo, lo que suene mejor en la frase). NO escribas el nombre real seguido de los apodos entre paréntesis ni listes varios apodos juntos. Podés alternar entre el nombre y un apodo distinto en oraciones siguientes para variar la prosa.
    - Desempeño del equipo e importancia del partido para la tabla
    - Contexto de la racha y clasificación si es relevante
    - Si hay historial vs el rival (partidos FUERA de esta fase), úsalo para dar contexto interesante (ej: "rompimos una racha negativa", "mantuvimos el buen récord histórico")
