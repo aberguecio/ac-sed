@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db'
 import { TeamLogo } from '@/components/team-logo'
 import { MatchContextEditor } from './match-context-editor'
 import { GoalsAssistsEditor } from './goals-assists-editor'
+import { CardsEditor } from './cards-editor'
 import { LockToggle } from './lock-toggle'
 import { ACSED_TEAM_NAME } from '@/lib/team-utils'
 
@@ -31,6 +32,15 @@ export default async function MatchInfoPage({ params }: PageProps) {
           assistPlayer: true,
         },
         orderBy: { createdAt: 'asc' },
+      },
+      cards: {
+        where: {
+          teamName: ACSED_TEAM_NAME,
+        },
+        include: {
+          scrapedPlayer: true,
+        },
+        orderBy: [{ minute: 'asc' }, { createdAt: 'asc' }],
       },
     },
   })
@@ -99,7 +109,7 @@ export default async function MatchInfoPage({ params }: PageProps) {
             <div className="flex-1 text-sm">
               <p className="font-medium text-amber-900">Partido bloqueado contra scraper</p>
               <p className="text-amber-700 text-xs mt-1">
-                El scraper NO sobreescribirá los goles/asistencias de este partido. Tus ediciones manuales están protegidas.
+                El scraper NO sobreescribirá los goles, asistencias ni tarjetas de este partido. Tus ediciones manuales están protegidas.
               </p>
             </div>
             <LockToggle matchId={matchId} initialLocked={match.eventsLocked} />
@@ -110,7 +120,7 @@ export default async function MatchInfoPage({ params }: PageProps) {
             <div className="flex-1 text-sm">
               <p className="font-medium text-blue-900">Partido desbloqueado</p>
               <p className="text-blue-700 text-xs mt-1">
-                El scraper puede actualizar los goles/asistencias automáticamente. Se bloqueará automáticamente al editar goles/asistencias.
+                El scraper puede actualizar los goles, asistencias y tarjetas automáticamente. Se bloqueará automáticamente al editar cualquiera de ellos.
               </p>
             </div>
             <LockToggle matchId={matchId} initialLocked={match.eventsLocked} />
@@ -141,6 +151,17 @@ export default async function MatchInfoPage({ params }: PageProps) {
       {match.goals.length === 0 && (
         <div className="bg-gray-50 rounded-xl border border-gray-100 p-6 text-center">
           <p className="text-gray-400 text-sm">No hay goles registrados para este partido.</p>
+        </div>
+      )}
+
+      {/* Cards Section */}
+      {match.cards.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 mt-6">
+          <h2 className="text-lg font-bold text-navy mb-4">Tarjetas</h2>
+          <p className="text-sm text-gray-500 mb-4">
+            Reasigná la tarjeta al jugador correcto si el scraper la atribuyó mal. Editar acá bloquea el scraper para este partido.
+          </p>
+          <CardsEditor cards={match.cards} players={players} />
         </div>
       )}
     </div>
