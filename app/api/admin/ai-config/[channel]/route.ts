@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { invalidateAiConfig, CHANNEL_KEYS, type ChannelKey } from '@/lib/ai-config'
+import { invalidateAiConfig, CHANNEL_KEYS, PROVIDERS, type ChannelKey } from '@/lib/ai-config'
 import { WHATSAPP_TOOL_KEYS } from '@/lib/ai-whatsapp-tool-keys'
 
 export async function PATCH(
@@ -24,8 +24,8 @@ export async function PATCH(
   } = body as Record<string, unknown>
 
   // Validation
-  if (provider !== undefined && provider !== 'openai' && provider !== 'anthropic') {
-    return NextResponse.json({ error: 'provider must be openai|anthropic' }, { status: 400 })
+  if (provider !== undefined && !(PROVIDERS as readonly string[]).includes(provider as string)) {
+    return NextResponse.json({ error: `provider must be one of: ${PROVIDERS.join('|')}` }, { status: 400 })
   }
   if (model !== undefined && (typeof model !== 'string' || model.length === 0 || model.length > 100)) {
     return NextResponse.json({ error: 'invalid model' }, { status: 400 })

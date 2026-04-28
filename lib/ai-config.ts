@@ -6,7 +6,9 @@ import { WHATSAPP_TOOL_KEYS } from '@/lib/ai-whatsapp-tool-keys'
 import type { AiChannelConfig } from '@prisma/client'
 
 export type ChannelKey = 'newsletter' | 'instagram' | 'whatsapp'
-export type Provider = 'openai' | 'anthropic'
+export type Provider = 'openai' | 'anthropic' | 'deepseek' | 'minimax'
+
+export const PROVIDERS: Provider[] = ['openai', 'anthropic', 'deepseek', 'minimax']
 
 export const CHANNEL_KEYS: ChannelKey[] = ['newsletter', 'instagram', 'whatsapp']
 
@@ -39,14 +41,29 @@ export function invalidateAiConfig(channel?: ChannelKey) {
  * keys (per provider) — not editable from the admin UI by design.
  */
 export function getModelForChannel(cfg: AiChannelConfig): LanguageModel {
+  const settings = { structuredOutputs: false } as const
+
   if (cfg.provider === 'anthropic') {
     const apiKey = process.env.ANTHROPIC_API_KEY
     return apiKey ? createAnthropic({ apiKey })(cfg.model) : anthropic(cfg.model)
   }
+  // DeepSeek and MiniMax expose OpenAI-compatible chat completions endpoints,
+  // so we route them through createOpenAI() with their respective baseURL.
+  if (cfg.provider === 'deepseek') {
+    return createOpenAI({
+      baseURL: 'https://api.deepseek.com/v1',
+      apiKey: process.env.DEEPSEEK_API_KEY ?? 'dummy',
+    })(cfg.model, settings)
+  }
+  if (cfg.provider === 'minimax') {
+    return createOpenAI({
+      baseURL: 'https://api.minimax.io/v1',
+      apiKey: process.env.MINIMAX_API_KEY ?? 'dummy',
+    })(cfg.model, settings)
+  }
   // openai (default)
   const apiKey = process.env.OPENAI_API_KEY ?? process.env.AI_API_KEY
   const baseURL = process.env.AI_BASE_URL
-  const settings = { structuredOutputs: false } as const
   if (baseURL) {
     return createOpenAI({ baseURL, apiKey: apiKey ?? 'dummy' })(cfg.model, settings)
   }

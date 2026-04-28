@@ -9,18 +9,19 @@ const ANTHROPIC_MODELS = [
 ]
 
 const OPENAI_FALLBACK = ['gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-nano']
+const DEEPSEEK_FALLBACK = ['deepseek-chat', 'deepseek-reasoner']
+const MINIMAX_MODELS = ['MiniMax-M2', 'MiniMax-Text-01', 'abab6.5s-chat']
 
 const CHAT_MODEL_RE = /^(gpt-|o1-|o3-|o4-|chatgpt-)/i
 
-let openaiCache: { at: number; models: string[] } | null = null
+type LiveCache = Record<string, { at: number; models: string[] }>
+const cache: LiveCache = {}
 
-async function fetchOpenAiModels(): Promise<string[] | null> {
-  const apiKey = process.env.OPENAI_API_KEY ?? process.env.AI_API_KEY
+async function fetchJsonModelList(url: string, apiKey: string | undefined, filter?: (id: string) => boolean) {
   if (!apiKey) return null
   try {
-    const res = await fetch('https://api.openai.com/v1/models', {
+    const res = await fetch(url, {
       headers: { Authorization: `Bearer ${apiKey}` },
-      // Avoid Next caching the upstream call; we manage our own TTL.
       cache: 'no-store',
     })
     if (!res.ok) return null
@@ -28,12 +29,18 @@ async function fetchOpenAiModels(): Promise<string[] | null> {
     if (!Array.isArray(body.data)) return null
     const ids = body.data
       .map((m: { id: string }) => m.id)
-      .filter((id: string) => CHAT_MODEL_RE.test(id))
+      .filter((id: string) => typeof id === 'string' && (filter ? filter(id) : true))
       .sort()
     return ids
   } catch {
     return null
   }
+}
+
+function cached(provider: string) {
+  const hit = cache[provider]
+  if (hit && Date.now() - hit.at < FIVE_MIN) return hit.models
+  return null
 }
 
 export async function GET(req: NextRequest) {
@@ -43,20 +50,33 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ provider, source: 'static', models: ANTHROPIC_MODELS })
   }
 
-  if (provider !== 'openai') {
-    return NextResponse.json({ error: 'unknown provider' }, { status: 400 })
+  if (provider === 'minimax') {
+    return NextResponse.json({ provider, source: 'static', models: MINIMAX_MODELS })
   }
 
-  const now = Date.now()
-  if (openaiCache && now - openaiCache.at < FIVE_MIN) {
-    return NextResponse.json({ provider, source: 'live-cached', models: openaiCache.models })
+  if (provider === 'deepseek') {
+    const hit = cached(provider)
+    if (hit) return NextResponse.json({ provider, source: 'live-cached', models: hit })
+    const apiKey = process.env.DEEPSEEK_API_KEY
+    const live = await fetchJsonModelList('https://api.deepseek.com/v1/models', apiKey)
+    if (live && live.length > 0) {
+      cache[provider] = { at: Date.now(), models: live }
+      return NextResponse.json({ provider, source: 'live', models: live })
+    }
+    return NextResponse.json({ provider, source: 'fallback', models: DEEPSEEK_FALLBACK })
   }
 
-  const live = await fetchOpenAiModels()
-  if (live && live.length > 0) {
-    openaiCache = { at: now, models: live }
-    return NextResponse.json({ provider, source: 'live', models: live })
+  if (provider === 'openai') {
+    const hit = cached(provider)
+    if (hit) return NextResponse.json({ provider, source: 'live-cached', models: hit })
+    const apiKey = process.env.OPENAI_API_KEY ?? process.env.AI_API_KEY
+    const live = await fetchJsonModelList('https://api.openai.com/v1/models', apiKey, id => CHAT_MODEL_RE.test(id))
+    if (live && live.length > 0) {
+      cache[provider] = { at: Date.now(), models: live }
+      return NextResponse.json({ provider, source: 'live', models: live })
+    }
+    return NextResponse.json({ provider, source: 'fallback', models: OPENAI_FALLBACK })
   }
 
-  return NextResponse.json({ provider, source: 'fallback', models: OPENAI_FALLBACK })
+  return NextResponse.json({ error: 'unknown provider' }, { status: 400 })
 }

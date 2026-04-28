@@ -131,8 +131,8 @@ export function ChannelCard({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <div>
           <label className="block text-xs font-semibold text-gray-600 mb-1">Provider</label>
-          <div className="flex gap-2">
-            {(['openai', 'anthropic'] as const).map(p => (
+          <div className="flex gap-2 flex-wrap">
+            {(['openai', 'anthropic', 'deepseek', 'minimax'] as const).map(p => (
               <label key={p} className={`px-3 py-1.5 text-sm rounded border cursor-pointer ${draft.provider === p ? 'bg-navy text-cream border-navy' : 'bg-white text-gray-600 border-gray-200'}`}>
                 <input
                   type="radio"
