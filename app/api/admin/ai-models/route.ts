@@ -15,6 +15,7 @@ const DEEPSEEK_FALLBACK = ['deepseek-chat', 'deepseek-reasoner']
 // freeform input with this list as autocomplete — any other id can be
 // typed in directly.
 const MINIMAX_MODELS = [
+  'MiniMax-M2.7',
   'MiniMax-M2',
   'MiniMax-Text-01',
   'abab6.5s-chat',
