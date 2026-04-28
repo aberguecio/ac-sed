@@ -153,6 +153,13 @@ model Standing {
   @@index([teamId])
 }
 
+// Snapshot of the official Liga B top-scorers leaderboard per tournament.
+// Populated by the scraper from the league API and read by the public
+// /stats page. NOT updated by manual edits in /admin/matches/[id]/info:
+// reassigning a goal/scorer in MatchGoal does NOT change the count here.
+// If our local edits diverge from the league's published numbers and that
+// matters for the stats UI, refresh by re-running the scrape (or query
+// MatchGoal directly instead of this table).
 model LeagueScorer {
   id           Int         @id @default(autoincrement())
   tournamentId Int
@@ -351,19 +358,23 @@ model InstagramPostImage {
   @@index([postId])
 }
 
-// Match-player relation: attendance + aggregated performance per match.
-// Coexists with MatchGoal/MatchCard (per-minute atomic events) without replacing them.
+// Match-player relation. Source of truth ONLY for attendanceStatus, rating
+// and notes. The aggregated event counts (goals/assists/yellowCards/redCard)
+// are deprecated — derive them from MatchGoal / MatchCard instead.
 model PlayerMatch {
   id               Int              @id @default(autoincrement())
   playerId         Int
   matchId          Int
   attendanceStatus AttendanceStatus @default(PENDING)
   rating           Int?             // 1-10 (validated in API)
-  // Aggregated match performance (synced from MatchGoal/MatchCard)
+  /// @deprecated derive from prisma.matchGoal where rosterPlayerId = playerId. Will be dropped.
   goals            Int              @default(0)
+  /// @deprecated derive from prisma.matchGoal where assistRosterPlayerId = playerId. Will be dropped.
   assists          Int              @default(0)
-  yellowCards      Int              @default(0) // 0, 1, or 2
-  redCard          Boolean          @default(false) // true if sent off (direct red or two yellows)
+  /// @deprecated derive from prisma.matchCard where cardType='yellow' and rosterPlayerId = playerId. Will be dropped.
+  yellowCards      Int              @default(0)
+  /// @deprecated derive from prisma.matchCard where cardType='red' (or two yellows) and rosterPlayerId = playerId. Will be dropped.
+  redCard          Boolean          @default(false)
   notes            String?
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt

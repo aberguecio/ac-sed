@@ -19,9 +19,6 @@ interface PlayerMatchLite {
   matchId: number
   attendanceStatus: AttendanceStatus
   rating: number | null
-  goals: number
-  yellowCards: number
-  redCard: boolean
   notes: string | null
 }
 
@@ -66,7 +63,6 @@ export function AttendanceEditor({ matchId, initialRows, initialized }: Props) {
   const [saveStates, setSaveStates] = useState<Record<number, SaveState>>({})
   const timeouts = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map())
   const [initializing, startInit] = useTransition()
-  const [syncing, startSync] = useTransition()
   const [broadcasting, startBroadcast] = useTransition()
 
   const counters = useMemo(() => {
@@ -97,19 +93,6 @@ export function AttendanceEditor({ matchId, initialRows, initialized }: Props) {
       const res = await fetch(`/api/admin/matches/${matchId}/attendance/init`, { method: 'POST' })
       if (!res.ok) {
         alert('Error al inicializar asistencia')
-        return
-      }
-      router.refresh()
-    })
-  }
-
-  async function handleSync() {
-    startSync(async () => {
-      const res = await fetch(`/api/admin/matches/${matchId}/attendance/sync-events`, {
-        method: 'POST',
-      })
-      if (!res.ok) {
-        alert('Error al sincronizar eventos')
         return
       }
       router.refresh()
@@ -209,9 +192,6 @@ export function AttendanceEditor({ matchId, initialRows, initialized }: Props) {
           matchId,
           attendanceStatus: 'PENDING' as AttendanceStatus,
           rating: null,
-          goals: 0,
-          yellowCards: 0,
-          redCard: false,
           notes: null,
         }
         return { ...r, playerMatch: { ...current, ...patch } }
@@ -223,30 +203,6 @@ export function AttendanceEditor({ matchId, initialRows, initialized }: Props) {
     const snapshot = { ...row }
     updateLocal(row.player.id, { attendanceStatus: next })
     sendPatch(row.player.id, { attendanceStatus: next }, snapshot)
-  }
-
-  function onYellowChange(row: Row, next: number) {
-    const snapshot = { ...row }
-    const redForced = next === 2 ? true : (row.playerMatch?.redCard ?? false)
-    updateLocal(row.player.id, { yellowCards: next, redCard: redForced })
-    sendPatch(row.player.id, { yellowCards: next, redCard: redForced }, snapshot)
-  }
-
-  function onRedChange(row: Row, next: boolean) {
-    const snapshot = { ...row }
-    // Si está marcando false pero ya tiene 2 amarillas, forzar true (invariante)
-    const currentYellow = row.playerMatch?.yellowCards ?? 0
-    if (!next && currentYellow === 2) {
-      return
-    }
-    updateLocal(row.player.id, { redCard: next })
-    sendPatch(row.player.id, { redCard: next }, snapshot)
-  }
-
-  function onGoalsChange(row: Row, next: number) {
-    const snapshot = { ...row }
-    updateLocal(row.player.id, { goals: next })
-    debouncedPatch(row.player.id, { goals: next }, snapshot)
   }
 
   function onRatingChange(row: Row, raw: string) {
@@ -300,13 +256,6 @@ export function AttendanceEditor({ matchId, initialRows, initialized }: Props) {
           >
             {broadcasting ? 'Enviando…' : `Enviar encuesta WhatsApp (${pendingWithPhone})`}
           </button>
-          <button
-            onClick={handleSync}
-            disabled={syncing}
-            className="text-xs px-3 py-1.5 rounded border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
-          >
-            {syncing ? 'Sincronizando…' : 'Sincronizar con Liga B'}
-          </button>
         </div>
       </div>
 
@@ -319,9 +268,6 @@ export function AttendanceEditor({ matchId, initialRows, initialized }: Props) {
               <th className="px-2 py-2 sm:px-3 sm:py-3 text-left">WhatsApp</th>
               <th className="px-2 py-2 sm:px-3 sm:py-3 text-left">Estado</th>
               <th className="px-2 py-2 sm:px-3 sm:py-3 text-left">Rating</th>
-              <th className="px-2 py-2 sm:px-3 sm:py-3 text-left">Goles</th>
-              <th className="px-2 py-2 sm:px-3 sm:py-3 text-left">🟨</th>
-              <th className="px-2 py-2 sm:px-3 sm:py-3 text-left">🟥</th>
               <th className="px-2 py-2 sm:px-3 sm:py-3 text-left">Notas</th>
               <th className="px-2 py-2 sm:px-3 sm:py-3"></th>
             </tr>
@@ -377,36 +323,6 @@ export function AttendanceEditor({ matchId, initialRows, initialized }: Props) {
                       onChange={(e) => onRatingChange(r, e.target.value)}
                       placeholder="—"
                       className="w-14 border border-gray-200 rounded px-1.5 py-1 text-xs text-center focus:outline-none focus:ring-1 focus:ring-navy"
-                    />
-                  </td>
-                  <td className="px-2 py-1.5 sm:px-3 sm:py-2">
-                    <input
-                      type="number"
-                      min={0}
-                      max={20}
-                      value={pm?.goals ?? 0}
-                      onChange={(e) => onGoalsChange(r, Math.max(0, parseInt(e.target.value) || 0))}
-                      className="w-14 border border-gray-200 rounded px-1.5 py-1 text-xs text-center focus:outline-none focus:ring-1 focus:ring-navy"
-                    />
-                  </td>
-                  <td className="px-2 py-1.5 sm:px-3 sm:py-2">
-                    <select
-                      value={pm?.yellowCards ?? 0}
-                      onChange={(e) => onYellowChange(r, parseInt(e.target.value))}
-                      className="text-xs border border-gray-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-navy"
-                    >
-                      <option value={0}>0</option>
-                      <option value={1}>1</option>
-                      <option value={2}>2</option>
-                    </select>
-                  </td>
-                  <td className="px-2 py-1.5 sm:px-3 sm:py-2">
-                    <input
-                      type="checkbox"
-                      checked={pm?.redCard ?? false}
-                      onChange={(e) => onRedChange(r, e.target.checked)}
-                      className="w-4 h-4 cursor-pointer accent-red-600"
-                      title={pm?.yellowCards === 2 ? 'Forzado por doble amarilla' : 'Roja'}
                     />
                   </td>
                   <td className="px-2 py-1.5 sm:px-3 sm:py-2">

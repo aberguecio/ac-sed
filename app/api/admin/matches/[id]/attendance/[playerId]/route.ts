@@ -20,9 +20,6 @@ export async function PATCH(
     attendanceStatus?: AttendanceStatus
     rating?: number | null
     notes?: string | null
-    goals?: number
-    yellowCards?: number
-    redCard?: boolean
   } = {}
 
   if ('attendanceStatus' in body) {
@@ -54,41 +51,6 @@ export async function PATCH(
     }
   }
 
-  if ('goals' in body) {
-    const g = body.goals
-    if (typeof g === 'number' && Number.isInteger(g) && g >= 0 && g <= 20) {
-      update.goals = g
-    } else {
-      return NextResponse.json({ error: 'goals debe ser entero 0-20' }, { status: 400 })
-    }
-  }
-
-  if ('yellowCards' in body) {
-    const y = body.yellowCards
-    if (y === 0 || y === 1 || y === 2) {
-      update.yellowCards = y
-    } else {
-      return NextResponse.json({ error: 'yellowCards debe ser 0, 1 o 2' }, { status: 400 })
-    }
-  }
-
-  if ('redCard' in body) {
-    if (typeof body.redCard !== 'boolean') {
-      return NextResponse.json({ error: 'redCard debe ser boolean' }, { status: 400 })
-    }
-    update.redCard = body.redCard
-  }
-
-  // Invariante: si el estado resultante tendría yellowCards=2 y redCard=false → rechazar.
-  const existing = await prisma.playerMatch.findUnique({
-    where: { playerId_matchId: { playerId, matchId } },
-  })
-  const nextYellow = update.yellowCards ?? existing?.yellowCards ?? 0
-  const nextRed = update.redCard ?? existing?.redCard ?? false
-  if (nextYellow === 2 && !nextRed) {
-    return NextResponse.json({ error: 'Doble amarilla implica roja' }, { status: 400 })
-  }
-
   const row = await prisma.playerMatch.upsert({
     where: { playerId_matchId: { playerId, matchId } },
     create: {
@@ -97,9 +59,6 @@ export async function PATCH(
       attendanceStatus: update.attendanceStatus ?? 'PENDING',
       rating: update.rating ?? null,
       notes: update.notes ?? null,
-      goals: update.goals ?? 0,
-      yellowCards: update.yellowCards ?? 0,
-      redCard: update.redCard ?? false,
     },
     update,
   })

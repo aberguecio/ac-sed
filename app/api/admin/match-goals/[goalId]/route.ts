@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { syncPlayerMatchEventsForMatch } from '@/lib/player-match-sync'
 
 // PATCH /api/admin/match-goals/[goalId] - Update goal assist information
 export async function PATCH(
@@ -84,9 +83,6 @@ export async function PATCH(
       where: { id: existingGoal.matchId },
       data: { eventsLocked: true },
     })
-
-    // Sync aggregated assists to PlayerMatch
-    await syncPlayerMatchEventsForMatch(existingGoal.matchId)
 
     return NextResponse.json(goal)
   } catch (err) {

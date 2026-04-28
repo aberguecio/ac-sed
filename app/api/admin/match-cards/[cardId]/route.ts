@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { syncPlayerMatchEventsForMatch } from '@/lib/player-match-sync'
 
 // PATCH /api/admin/match-cards/[cardId] — Reassign the player who got a card.
 // Mirrors /api/admin/match-goals/[goalId]: updates leaguePlayerId +
@@ -50,8 +49,6 @@ export async function PATCH(
       where: { id: existingCard.matchId },
       data: { eventsLocked: true },
     })
-
-    await syncPlayerMatchEventsForMatch(existingCard.matchId)
 
     return NextResponse.json(card)
   } catch (err) {

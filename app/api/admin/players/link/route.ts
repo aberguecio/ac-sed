@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { syncPlayerMatchEventsForMatch } from '@/lib/player-match-sync'
 import { ACSED_TEAM_ID } from '@/lib/team-utils'
 
 type ScrapedWithTeam = {
@@ -123,16 +122,6 @@ export async function POST(request: Request) {
         data: { rosterPlayerId }
       })
     ])
-
-    // Propagar agregados (goals/yellowCards/redCard) a PlayerMatch en los matches afectados.
-    const affectedMatches = await prisma.$queryRaw<{ matchId: number }[]>`
-      SELECT DISTINCT "matchId" FROM "MatchGoal" WHERE "rosterPlayerId" = ${rosterPlayerId}
-      UNION
-      SELECT DISTINCT "matchId" FROM "MatchCard" WHERE "rosterPlayerId" = ${rosterPlayerId}
-    `
-    for (const { matchId } of affectedMatches) {
-      await syncPlayerMatchEventsForMatch(matchId)
-    }
 
     return NextResponse.json({ success: true })
   } catch (err) {
