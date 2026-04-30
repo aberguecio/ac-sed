@@ -170,10 +170,27 @@ export function buildInsights(input: InsightInput): ScoutingInsight[] {
     })
   }
 
-  // Volatility flag.
+  // Volatility flag. The σ of GD measures magnitude variability, not outcome
+  // mix — so we only call the team "irregular" if outcomes actually swing
+  // both ways. If they always win (or always lose), high σ just means margins
+  // vary, which we phrase differently.
   if (input.volatility.rivalStdDev > 2.5) {
+    const results = input.recentForm.rival.results
+    const wins = results.filter((r) => r === 'W').length
+    const losses = results.filter((r) => r === 'L').length
+    const sigma = input.volatility.rivalStdDev.toFixed(1)
+    let text: string
+    if (wins > 0 && losses > 0) {
+      text = `Rival irregular (σ GD ${sigma}): da partidos extremos en ambos sentidos.`
+    } else if (wins > 0 && losses === 0) {
+      text = `Rival gana siempre pero por márgenes muy variables (σ GD ${sigma}): a veces apretado, a veces goleada.`
+    } else if (losses > 0 && wins === 0) {
+      text = `Rival pierde siempre pero por márgenes muy variables (σ GD ${sigma}): a veces apretado, a veces goleada en contra.`
+    } else {
+      text = `Rival con márgenes muy variables (σ GD ${sigma}).`
+    }
     out.push({
-      text: `Rival irregular (σ GD ${input.volatility.rivalStdDev.toFixed(1)}): da partidos extremos en ambos sentidos.`,
+      text,
       weight: input.volatility.rivalStdDev / 2,
       category: 'volatility',
     })
