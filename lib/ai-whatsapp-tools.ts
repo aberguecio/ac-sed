@@ -6,6 +6,10 @@ import { getMatchContext } from '@/lib/ai'
 import { calculateStandingsUpToDate } from '@/lib/stats-calculator'
 import { getTournamentRules } from '@/lib/tournament-config'
 import { bestLevenshtein } from '@/lib/string-utils'
+import {
+  buildLeaguePlayerNameMap,
+  canonicalScorerName,
+} from '@/lib/player-naming'
 
 const DEFAULT_LIMIT = 50
 const MAX_LIMIT = 100
@@ -86,23 +90,34 @@ function summarizeMatch(m: {
 
 export const listMatchesTool = tool({
   description:
-    'Lista partidos con filtros flexibles. Útil para "qué partidos hay/hubo". Por defecto: AC SED, próximos. Filtros: status (played|upcoming|any), opponent (nombre rival), teamId, year, from/to (ISO date), tournamentId, limit.',
+    'Lista partidos con filtros flexibles. Por defecto se acota al TORNEO ACTIVO y a los matches de AC SED si no especificás equipo/rival. ' +
+    'Para consultas históricas (otros torneos) pasá `allTournaments: true` o un `tournamentId`/`year` específico. ' +
+    'Filtros: status (played|upcoming|any), opponent, teamId, year, from/to (ISO date), tournamentId, allTournaments, limit.',
   parameters: z.object({
     status: z.enum(['played', 'upcoming', 'any']).nullish(),
     teamId: z.number().int().nullish(),
     opponent: z.string().nullish(),
     year: z.number().int().nullish(),
     tournamentId: z.number().int().nullish(),
+    allTournaments: z
+      .boolean()
+      .nullish()
+      .describe('Si true, no aplica el filtro por torneo activo (busca en toda la historia).'),
     from: z.string().nullish().describe('ISO date inclusive'),
     to: z.string().nullish().describe('ISO date inclusive'),
     limit: z.number().int().min(1).max(MAX_LIMIT).nullish(),
     order: z.enum(['asc', 'desc']).nullish(),
   }),
-  execute: async ({ status, teamId, opponent, year, tournamentId, from, to, limit, order }) => {
+  execute: async ({ status, teamId, opponent, year, tournamentId, allTournaments, from, to, limit, order }) => {
     const effectiveStatus = status ?? 'any'
 
     const where: Record<string, unknown> = {}
-    if (tournamentId) where.tournamentId = tournamentId
+    if (tournamentId) {
+      where.tournamentId = tournamentId
+    } else if (!allTournaments && !year && !from && !to) {
+      const active = await findActiveTournament()
+      if (active) where.tournamentId = active.id
+    }
 
     const dateFilter: Record<string, Date> = {}
     if (from) dateFilter.gte = new Date(from)
@@ -165,35 +180,31 @@ export const getMatchDetailsTool = tool({
       include: {
         homeTeam: { select: { name: true } },
         awayTeam: { select: { name: true } },
+        tournament: { select: { id: true, name: true } },
       },
     })
     if (!match) return null
-    const ctx = await getMatchContext(match)
+    const [ctx, nameMap] = await Promise.all([
+      getMatchContext(match),
+      buildLeaguePlayerNameMap(),
+    ])
     return {
-      match: summarizeMatch({ ...match, tournament: null }),
+      match: summarizeMatch(match),
       goals: ctx.goals.map(g => ({
-        scorer: `${g.scrapedPlayer.firstName} ${g.scrapedPlayer.lastName}`.trim(),
+        scorer: canonicalScorerName(g, nameMap),
         team: g.teamName,
         minute: g.minute,
       })),
       cards: ctx.cards.map(c => ({
-        player: `${c.scrapedPlayer.firstName} ${c.scrapedPlayer.lastName}`.trim(),
+        player: canonicalScorerName(c, nameMap),
         team: c.teamName,
         type: c.cardType,
         minute: c.minute,
       })),
-      previousMatchesInPhase: ctx.previousMatches.map(m =>
-        summarizeMatch({ ...m, tournament: null })
-      ),
-      upcomingMatchesInPhase: ctx.upcomingMatches.map(m =>
-        summarizeMatch({ ...m, tournament: null })
-      ),
-      otherMatchesInRound: ctx.otherMatchesInRound.map(m =>
-        summarizeMatch({ ...m, tournament: null })
-      ),
-      historicalVsOpponent: ctx.historicalMatches.map(m =>
-        summarizeMatch({ ...m, tournament: null })
-      ),
+      previousMatchesInPhase: ctx.previousMatches.map(summarizeMatch),
+      upcomingMatchesInPhase: ctx.upcomingMatches.map(summarizeMatch),
+      otherMatchesInRound: ctx.otherMatchesInRound.map(summarizeMatch),
+      historicalVsOpponent: ctx.historicalMatches.map(summarizeMatch),
       standingsAtMatchDate: ctx.standingsRows,
     }
   },
@@ -203,13 +214,16 @@ export const getMatchGoalsTool = tool({
   description: 'Devuelve los goleadores de un partido (nombre, equipo, minuto).',
   parameters: z.object({ matchId: z.number().int() }),
   execute: async ({ matchId }) => {
-    const goals = await prisma.matchGoal.findMany({
-      where: { matchId },
-      include: { scrapedPlayer: true },
-      orderBy: { minute: 'asc' },
-    })
+    const [goals, nameMap] = await Promise.all([
+      prisma.matchGoal.findMany({
+        where: { matchId },
+        include: { scrapedPlayer: true },
+        orderBy: { minute: 'asc' },
+      }),
+      buildLeaguePlayerNameMap(),
+    ])
     return goals.map(g => ({
-      scorer: `${g.scrapedPlayer.firstName} ${g.scrapedPlayer.lastName}`.trim(),
+      scorer: canonicalScorerName(g, nameMap),
       team: g.teamName,
       minute: g.minute,
     }))
@@ -419,17 +433,25 @@ export const searchPlayerTool = tool({
 
 export const getTopScorersTool = tool({
   description:
-    'Goleadores agregados sumando MatchGoal. Filtros: year, tournamentId, teamName (para limitar a un equipo). Default limit 10.',
+    'Goleadores agregados sumando MatchGoal. Por defecto se limita al TORNEO ACTIVO. ' +
+    'Para histórico pasá `allTournaments: true` o un `tournamentId`/`year` específico. ' +
+    'Filtros: year, tournamentId, allTournaments, teamName (para limitar a un equipo). Default limit 10.',
   parameters: z.object({
     year: z.number().int().nullish(),
     tournamentId: z.number().int().nullish(),
+    allTournaments: z.boolean().nullish(),
     teamName: z.string().nullish(),
     limit: z.number().int().min(1).max(50).nullish(),
   }),
-  execute: async ({ year, tournamentId, teamName, limit }) => {
+  execute: async ({ year, tournamentId, allTournaments, teamName, limit }) => {
     const effectiveLimit = limit ?? 10
     const matchWhere: Record<string, unknown> = { homeScore: { not: null } }
-    if (tournamentId) matchWhere.tournamentId = tournamentId
+    if (tournamentId) {
+      matchWhere.tournamentId = tournamentId
+    } else if (!allTournaments && !year) {
+      const active = await findActiveTournament()
+      if (active) matchWhere.tournamentId = active.id
+    }
     if (year) {
       matchWhere.date = {
         gte: new Date(Date.UTC(year, 0, 1)),
@@ -444,14 +466,17 @@ export const getTopScorersTool = tool({
     const goalWhere: Record<string, unknown> = { matchId: { in: matchIds } }
     if (teamName) goalWhere.teamName = { contains: teamName, mode: 'insensitive' }
 
-    const goals = await prisma.matchGoal.findMany({
-      where: goalWhere,
-      include: { scrapedPlayer: true },
-    })
+    const [goals, nameMap] = await Promise.all([
+      prisma.matchGoal.findMany({
+        where: goalWhere,
+        include: { scrapedPlayer: true },
+      }),
+      buildLeaguePlayerNameMap(),
+    ])
 
     const acc = new Map<string, { player: string; team: string; goals: number }>()
     for (const g of goals) {
-      const player = `${g.scrapedPlayer.firstName} ${g.scrapedPlayer.lastName}`.trim()
+      const player = canonicalScorerName(g, nameMap)
       const key = `${player}::${g.teamName}`
       const existing = acc.get(key)
       if (existing) existing.goals++
@@ -524,40 +549,53 @@ export const getPlayerSeasonStatsTool = tool({
 
 export const getTeamCardsTool = tool({
   description:
-    'Tarjetas (amarillas y rojas) de los jugadores de un equipo (por nombre), opcionalmente filtradas por fecha. Devuelve, por jugador: total amarillas, total rojas, tarjetas recientes (partido, minuto, tipo) y si la tarjeta más reciente fue roja o segunda amarilla (candidato a suspensión en la próxima fecha). Útil para "quién está suspendido en el rival" o "cómo viene el rival de tarjetas".',
+    'Tarjetas (amarillas y rojas) de los jugadores de un equipo. Por defecto se limita al TORNEO ACTIVO. ' +
+    'Para histórico pasá `allTournaments: true` o un `tournamentId` específico. `sinceDate` también funciona como override. ' +
+    'Devuelve, por jugador: total amarillas, total rojas, tarjetas recientes (partido, minuto, tipo) y `likelySuspendedNextMatch` (heurística: roja en último partido o 2+ amarillas en el mismo partido — calculado SOBRE EL SCOPE FILTRADO).',
   parameters: z.object({
     teamName: z.string().min(1),
+    tournamentId: z.number().int().nullish(),
+    allTournaments: z.boolean().nullish(),
     sinceDate: z.string().nullish().describe('ISO date — solo tarjetas de partidos jugados >= esta fecha.'),
     limit: z.number().int().min(1).max(MAX_LIMIT).nullish(),
   }),
-  execute: async ({ teamName, sinceDate, limit }) => {
+  execute: async ({ teamName, tournamentId, allTournaments, sinceDate, limit }) => {
     const matchWhere: Record<string, unknown> = { homeScore: { not: null } }
     if (sinceDate) matchWhere.date = { gte: new Date(sinceDate) }
+    if (tournamentId) {
+      matchWhere.tournamentId = tournamentId
+    } else if (!allTournaments && !sinceDate) {
+      const active = await findActiveTournament()
+      if (active) matchWhere.tournamentId = active.id
+    }
 
     const matchIds = (
       await prisma.match.findMany({ where: matchWhere, select: { id: true } })
     ).map(m => m.id)
-    if (matchIds.length === 0) return { teamName, players: [] }
+    if (matchIds.length === 0) return { teamName, count: 0, players: [] }
 
-    const cards = await prisma.matchCard.findMany({
-      where: {
-        matchId: { in: matchIds },
-        teamName: { contains: teamName, mode: 'insensitive' },
-      },
-      include: {
-        scrapedPlayer: true,
-        match: {
-          select: {
-            id: true,
-            date: true,
-            homeTeam: { select: { name: true } },
-            awayTeam: { select: { name: true } },
+    const [cards, nameMap] = await Promise.all([
+      prisma.matchCard.findMany({
+        where: {
+          matchId: { in: matchIds },
+          teamName: { contains: teamName, mode: 'insensitive' },
+        },
+        include: {
+          scrapedPlayer: true,
+          match: {
+            select: {
+              id: true,
+              date: true,
+              homeTeam: { select: { name: true } },
+              awayTeam: { select: { name: true } },
+            },
           },
         },
-      },
-      orderBy: { match: { date: 'desc' } },
-      take: limit ?? MAX_LIMIT,
-    })
+        orderBy: { match: { date: 'desc' } },
+        take: limit ?? MAX_LIMIT,
+      }),
+      buildLeaguePlayerNameMap(),
+    ])
 
     type Bucket = {
       player: string
@@ -576,7 +614,7 @@ export const getTeamCardsTool = tool({
     const byPlayer = new Map<number, Bucket>()
     for (const c of cards) {
       const key = c.leaguePlayerId
-      const name = `${c.scrapedPlayer.firstName} ${c.scrapedPlayer.lastName}`.trim()
+      const name = canonicalScorerName(c, nameMap)
       const homeName = c.match.homeTeam?.name ?? 'TBD'
       const awayName = c.match.awayTeam?.name ?? 'TBD'
       const isHome = homeName.toLowerCase().includes(teamName.toLowerCase())

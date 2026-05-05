@@ -58,6 +58,7 @@ export async function getMatchContext(match: Match & { homeTeam?: { name: string
           include: {
             homeTeam: true,
             awayTeam: true,
+            tournament: { select: { id: true, name: true } },
           },
           orderBy: { date: 'asc' },
         })
@@ -78,6 +79,7 @@ export async function getMatchContext(match: Match & { homeTeam?: { name: string
           include: {
             homeTeam: true,
             awayTeam: true,
+            tournament: { select: { id: true, name: true } },
           },
         })
       : Promise.resolve([]),
@@ -98,6 +100,7 @@ export async function getMatchContext(match: Match & { homeTeam?: { name: string
           include: {
             homeTeam: true,
             awayTeam: true,
+            tournament: { select: { id: true, name: true } },
           },
         })
       : Promise.resolve([]),
@@ -127,6 +130,7 @@ export async function getMatchContext(match: Match & { homeTeam?: { name: string
       include: {
         homeTeam: true,
         awayTeam: true,
+        tournament: { select: { id: true, name: true } },
       },
       orderBy: { date: 'desc' },
     }),
