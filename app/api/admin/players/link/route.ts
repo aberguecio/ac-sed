@@ -66,9 +66,10 @@ export async function GET() {
       }
     })
 
-    // Get all unlinked scraped players for the dropdown (any team)
+    // Get unlinked scraped players for the dropdown (only AC SED)
     const allUnlinkedScrapedRaw = await prisma.scrapedPlayer.findMany({
       where: {
+        teamId: ACSED_TEAM_ID,
         id: {
           notIn: linkedScrapedPlayerIds
         }
