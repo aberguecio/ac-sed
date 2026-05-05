@@ -653,18 +653,15 @@ export async function runScraper(
       },
     })
 
-    // Notify the WhatsApp group for each AC SED match that was scraped
-    // (allNewMatches is already filtered to AC SED). Fire-and-forget.
+    // When at least one AC SED match was just scored, the standings
+    // changed — ping the group with a single generic message linking to
+    // the public stats page. The auto-generated news stays as a draft and
+    // its own publish notification fires separately when the admin
+    // publishes it.
     if (allNewMatches.length > 0) {
       try {
-        const { notifyMatchScraped } = await import('@/lib/whatsapp-notifier')
-        for (const m of allNewMatches) {
-          const fresh = await prisma.match.findUnique({
-            where: { id: m.id },
-            include: { homeTeam: true, awayTeam: true },
-          })
-          if (fresh) await notifyMatchScraped(fresh)
-        }
+        const { notifyStandingsUpdated } = await import('@/lib/whatsapp-notifier')
+        await notifyStandingsUpdated()
       } catch (err) {
         console.error('[scraper] whatsapp notify failed', err)
       }

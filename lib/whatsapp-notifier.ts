@@ -101,6 +101,14 @@ export async function notifyMatchScraped(match: MatchWithTeams): Promise<void> {
   await notifyGroup(`${headline}${link}`, `match-scraped:${match.id}`)
 }
 
+// ---------- Standings updated (post-scrape) ----------
+
+export async function notifyStandingsUpdated(): Promise<void> {
+  const link = SITE_URL ? `${SITE_URL}/stats` : 'acsed.cl/stats'
+  const body = `📊 Tabla actualizada\n${link}`
+  await notifyGroup(body, 'standings-updated')
+}
+
 // ---------- News published ----------
 
 type NewsForNotification = Pick<NewsArticle, 'id' | 'title' | 'slug'>
