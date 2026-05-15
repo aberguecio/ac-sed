@@ -111,7 +111,7 @@ export default async function HomePage() {
             className="w-full h-full object-cover opacity-60"
             style={{ objectPosition: "70% 35%" }}
           />
-          <div className="absolute inset-0 bg-gradient-to-r from-navy via-navy/30 to-navy/10"></div>
+          <div className="absolute inset-0 bg-gradient-to-r from-navy/90 via-navy/20 to-navy/90"></div>
         </div>
 
         <div className="max-w-6xl mx-auto relative z-10">

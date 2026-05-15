@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import clsx from 'clsx'
 
 const links = [
@@ -15,14 +15,41 @@ const links = [
 export function Navbar() {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
+  const [scrolled, setScrolled] = useState(false)
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 16)
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
 
   return (
-    <nav className="bg-navy shadow-lg">
+    <nav
+      className={clsx(
+        'sticky top-0 z-40 transition-colors duration-200',
+        scrolled
+          ? 'bg-navy/80 backdrop-blur-md shadow-md'
+          : 'bg-navy shadow-lg'
+      )}
+    >
       <div className="max-w-6xl mx-auto px-4">
-        <div className="flex items-center justify-between h-16">
+        <div
+          className={clsx(
+            'flex items-center justify-between transition-all duration-200',
+            scrolled ? 'h-12' : 'h-16'
+          )}
+        >
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2">
-            <img src="/ACSED-transaparent.webp" alt="AC SED" className="h-12 w-auto" />
+            <img
+              src="/ACSED-transaparent.webp"
+              alt="AC SED"
+              className={clsx(
+                'w-auto transition-all duration-200',
+                scrolled ? 'h-9' : 'h-12'
+              )}
+            />
             <span className="text-cream font-bold text-lg tracking-wide">AC SED</span>
           </Link>
 
