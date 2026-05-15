@@ -13,10 +13,48 @@ interface HeadToHeadRecord {
   lost: number
   goalsFor: number
   goalsAgainst: number
+  // True when this opponent is also scheduled to face AC SED again in the
+  // current active stage (used so we can keep one-time opponents we'll
+  // rematch alongside the 2+ played opponents).
+  upcomingInCurrentStage: boolean
 }
 
 export async function GET() {
   try {
+    // Identify the active stage so we can also surface one-time opponents
+    // we're about to face again in this phase.
+    const activeTournament = await prisma.tournament.findFirst({
+      where: { isActive: true },
+      orderBy: { id: 'desc' },
+      include: { stages: { orderBy: { orderIndex: 'desc' } } },
+    })
+    const activeStageId = activeTournament?.stages[0]?.id ?? null
+
+    const upcomingOpponentIds = new Set<number>()
+    if (activeStageId !== null) {
+      const upcoming = await prisma.match.findMany({
+        where: {
+          stageId: activeStageId,
+          homeScore: null,
+          OR: [
+            { homeTeam: { name: ACSED_TEAM_NAME } },
+            { awayTeam: { name: ACSED_TEAM_NAME } },
+          ],
+        },
+        select: {
+          homeTeamId: true,
+          awayTeamId: true,
+          homeTeam: { select: { name: true } },
+          awayTeam: { select: { name: true } },
+        },
+      })
+      for (const m of upcoming) {
+        const isHome = m.homeTeam?.name === ACSED_TEAM_NAME
+        const opponentId = isHome ? m.awayTeamId : m.homeTeamId
+        if (opponentId) upcomingOpponentIds.add(opponentId)
+      }
+    }
+
     // Get all matches where AC SED played
     const matches = await prisma.match.findMany({
       where: {
@@ -56,6 +94,9 @@ export async function GET() {
           lost: 0,
           goalsFor: 0,
           goalsAgainst: 0,
+          upcomingInCurrentStage: opponentTeam?.id
+            ? upcomingOpponentIds.has(opponentTeam.id)
+            : false,
         })
       }
 
@@ -73,9 +114,11 @@ export async function GET() {
       }
     }
 
-    // Convert to array, filter for 2+ matches, and sort by total matches played
+    // Include opponents we've played 2+ times, plus those we've played only
+    // once but are scheduled to face again in the current stage (so the
+    // upcoming rematch shows up with its prior history).
     const headToHead = Array.from(recordsByOpponent.values())
-      .filter(record => record.played >= 2)
+      .filter(record => record.played >= 2 || (record.played >= 1 && record.upcomingInCurrentStage))
       .sort((a, b) => b.played - a.played)
 
     return NextResponse.json(headToHead)

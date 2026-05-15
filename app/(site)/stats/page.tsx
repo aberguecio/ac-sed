@@ -44,6 +44,7 @@ interface HeadToHeadRecord {
   lost: number
   goalsFor: number
   goalsAgainst: number
+  upcomingInCurrentStage: boolean
 }
 
 export default function StatsPage() {
@@ -703,6 +704,14 @@ export default function StatsPage() {
                                 size="sm"
                               />
                               <span className="font-medium text-navy">{record.opponent}</span>
+                              {record.upcomingInCurrentStage && (
+                                <span
+                                  title="Rival pendiente en la fase actual"
+                                  className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-navy/10 text-navy"
+                                >
+                                  Próximo
+                                </span>
+                              )}
                             </div>
                           </td>
                           <td className="py-2 px-2 text-center">{record.played}</td>
