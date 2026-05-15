@@ -499,14 +499,20 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
       const nowHasResult = match.homeScore !== null && match.awayScore !== null
       wasResultUpdated = hadNoResult && nowHasResult
 
+      // Compare dates by timestamp — `Date !== Date` is always true by
+      // reference, so we have to .getTime() both sides. This is what
+      // catches the "match was created with no time and the schedule got
+      // added later" case.
+      const dateChanged = existing.date.getTime() !== matchDate.getTime()
+
       if (
         existing.homeScore !== match.homeScore ||
         existing.awayScore !== match.awayScore ||
         existing.homeTeamId !== homeTeamId ||
         existing.awayTeamId !== awayTeamId ||
-        existing.venue !== (match.grounds || null)
+        existing.venue !== (match.grounds || null) ||
+        dateChanged
       ) {
-        // Update if scores, team IDs, or venue changed
         savedMatch = await prisma.match.update({
           where: { leagueMatchId: matchId },
           data: {
@@ -514,7 +520,8 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
             awayScore: match.awayScore,
             homeTeamId: homeTeamId,
             awayTeamId: awayTeamId,
-            venue: match.grounds || null
+            venue: match.grounds || null,
+            date: matchDate,
           },
         })
 

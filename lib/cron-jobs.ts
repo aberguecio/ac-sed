@@ -21,10 +21,6 @@ export type JobResult = {
 
 export type JobHandler = (job: CronJob) => Promise<JobResult>
 
-const HOUR_MS = 60 * 60 * 1000
-const RETRY_WINDOW_MS = 24 * HOUR_MS
-const RETRY_INTERVAL_MS = HOUR_MS
-
 const aiProvider = () => process.env.AI_PROVIDER ?? 'openai'
 
 async function processResultMatch(matchId: number) {
@@ -108,21 +104,11 @@ async function processResultMatch(matchId: number) {
   }
 }
 
-const handleWeeklyResult: JobHandler = async (job) => {
+const handleWeeklyResult: JobHandler = async () => {
   const { newMatches } = await runScraper('scheduler')
 
   if (newMatches.length === 0) {
-    const now = new Date()
-    const stillRetrying = job.retryUntil && now < job.retryUntil
-    const until = stillRetrying ? job.retryUntil! : new Date(now.getTime() + RETRY_WINDOW_MS)
-    const nextAt = new Date(now.getTime() + RETRY_INTERVAL_MS)
-    return {
-      status: 'noop',
-      message: stillRetrying
-        ? 'sin partido nuevo, reintentando en 1h'
-        : 'sin partido nuevo, abro ventana de retry 24h',
-      scheduleRetry: { until, nextAt },
-    }
+    return { status: 'noop', message: 'sin partido nuevo', clearRetry: true }
   }
 
   for (const match of newMatches) {
