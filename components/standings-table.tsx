@@ -36,7 +36,7 @@ export function StandingsTable({ standings, highlightTeam = 'ACSED' }: Props) {
             const isAcsed = isACSED(teamName)
             return (
               <tr
-                key={s.id}
+                key={`${s.teamId}-${s.id}`}
                 className={clsx(
                   'border-b border-cream-dark/30',
                   isAcsed ? 'bg-wheat/20 font-semibold' : 'hover:bg-cream-dark/30'
