@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { publishSinglePost, publishCarouselPost } from '@/lib/instagram'
+import { publishSinglePost, publishCarouselPost, getMediaPermalink, getAccountInfo } from '@/lib/instagram'
 import { notifyInstagramPublished } from '@/lib/whatsapp-notifier'
 
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -49,7 +49,18 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       include: { images: { orderBy: { orderIndex: 'asc' } } },
     })
 
-    void notifyInstagramPublished({ id: updated.id, igMediaId: updated.igMediaId, postType: updated.postType })
+    // Prefer the post permalink; fall back to the live account profile URL
+    // (username pulled from the Graph API so we don't hardcode an old handle).
+    let link = await getMediaPermalink(mediaId)
+    if (!link) {
+      try {
+        const account = await getAccountInfo()
+        if (account.username) link = `https://instagram.com/${account.username}`
+      } catch {
+        // ignore — link stays null and the notifier sends without a URL
+      }
+    }
+    void notifyInstagramPublished({ id: updated.id, postType: updated.postType, link })
 
     return NextResponse.json(updated)
   } catch (err) {

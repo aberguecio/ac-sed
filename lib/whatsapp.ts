@@ -39,6 +39,12 @@ export interface ParsedIncomingText {
   eventId: string
 }
 
+export interface SendTextOptions {
+  typingMs?: number
+  mentionedJids?: string[]
+  linkPreview?: boolean
+}
+
 export interface WhatsappProvider {
   sendPoll(
     to: string,
@@ -46,7 +52,7 @@ export interface WhatsappProvider {
     options: readonly string[],
     typingMs: number
   ): Promise<{ id: string }>
-  sendText(to: string, body: string, typingMs?: number, mentionedJids?: string[]): Promise<{ id: string }>
+  sendText(to: string, body: string, options?: SendTextOptions): Promise<{ id: string }>
   parsePollVote(payload: unknown): ParsedPollVote | null
   parseIncomingText(payload: unknown): ParsedIncomingText | null
   verifySignature(req: Request): boolean
@@ -154,11 +160,13 @@ class EvolutionProvider implements WhatsappProvider {
     return { id }
   }
 
-  async sendText(to: string, body: string, typingMs?: number, mentionedJids?: string[]): Promise<{ id: string }> {
+  async sendText(to: string, body: string, options: SendTextOptions = {}): Promise<{ id: string }> {
+    const { typingMs, mentionedJids, linkPreview } = options
     const url = `${this.baseUrl}/message/sendText/${encodeURIComponent(this.instance)}`
     const payload: Record<string, unknown> = { number: to, text: body }
     if (typingMs && typingMs > 0) payload.delay = typingMs
     if (mentionedJids && mentionedJids.length > 0) payload.mentioned = mentionedJids
+    if (linkPreview === false) payload.linkPreview = false
     const res = await fetch(url, {
       method: 'POST',
       headers: {
@@ -439,7 +447,7 @@ export async function sendAttendanceSummaryToGroup(
   const provider = getWhatsappProvider()
   const typingMs = 3000 + Math.floor(Math.random() * 2001) // 3000–5000ms
   try {
-    const { id } = await provider.sendText(groupJid, body, typingMs)
+    const { id } = await provider.sendText(groupJid, body, { typingMs })
     return { ok: true, providerMessageId: id, body }
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err)

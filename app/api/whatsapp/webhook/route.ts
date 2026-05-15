@@ -197,12 +197,10 @@ async function handleIncomingText(text: IncomingText): Promise<Record<string, un
 
   try {
     const mentionedJids = extractMentionedJids(answer)
-    const sent = await getWhatsappProvider().sendText(
-      text.remoteJid,
-      answer,
-      AI_REPLY_TYPING_MS,
-      mentionedJids.length > 0 ? mentionedJids : undefined,
-    )
+    const sent = await getWhatsappProvider().sendText(text.remoteJid, answer, {
+      typingMs: AI_REPLY_TYPING_MS,
+      mentionedJids: mentionedJids.length > 0 ? mentionedJids : undefined,
+    })
     await prisma.whatsappMessage.create({
       data: {
         playerId: null,

@@ -13,7 +13,11 @@ function groupJid(): string | null {
  * through here so they share the same fire-and-forget semantics: if the
  * Evolution API call fails, we log and swallow — never block the caller.
  */
-async function notifyGroup(text: string, source: string): Promise<void> {
+async function notifyGroup(
+  text: string,
+  source: string,
+  options: { linkPreview?: boolean } = {},
+): Promise<void> {
   const to = groupJid()
   if (!to) {
     console.log(`[whatsapp-notifier] ${source}: no group jid configured, skipping`)
@@ -21,7 +25,7 @@ async function notifyGroup(text: string, source: string): Promise<void> {
   }
   try {
     const provider = getWhatsappProvider()
-    await provider.sendText(to, text)
+    await provider.sendText(to, text, { linkPreview: options.linkPreview })
     console.log(`[whatsapp-notifier] ${source}: sent to ${to}`)
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
@@ -121,17 +125,14 @@ export async function notifyNewsPublished(article: NewsForNotification): Promise
 
 // ---------- Instagram published ----------
 
-type InstagramForNotification = Pick<InstagramPost, 'id' | 'igMediaId' | 'postType'>
+type InstagramForNotification = Pick<InstagramPost, 'id' | 'postType'> & {
+  link?: string | null
+}
 
 export async function notifyInstagramPublished(post: InstagramForNotification): Promise<void> {
-  // The IG Graph API doesn't always return a permalink in our wrapper; we
-  // surface the raw media id so the user can find the post (and link to the
-  // public account profile as a fallback).
-  const profile = 'https://instagram.com/ac.sed_2023'
-  const lines = [
-    `📸 Nuevo post en Instagram (${post.postType}).`,
-    profile,
-  ]
-  if (post.igMediaId) lines.push(`media id: ${post.igMediaId}`)
-  await notifyGroup(lines.join('\n'), `ig-published:${post.id}`)
+  const lines = [`📸 Nuevo post en Instagram (${post.postType}).`]
+  if (post.link) lines.push(post.link)
+  // Disable WhatsApp link preview so it doesn't attach the giant Instagram
+  // logo thumbnail to the message.
+  await notifyGroup(lines.join('\n'), `ig-published:${post.id}`, { linkPreview: false })
 }

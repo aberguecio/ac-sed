@@ -116,6 +116,15 @@ export async function publishMedia(creationId: string): Promise<string> {
   return data.id as string
 }
 
+export async function getMediaPermalink(mediaId: string): Promise<string | null> {
+  try {
+    const data = await igFetch(`/${mediaId}?fields=permalink&access_token=${getToken()}`)
+    return typeof data.permalink === 'string' ? data.permalink : null
+  } catch {
+    return null
+  }
+}
+
 // --- Convenience wrappers ---
 
 export async function publishSinglePost(
