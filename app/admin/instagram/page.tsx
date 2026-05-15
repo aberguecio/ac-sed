@@ -46,6 +46,9 @@ interface Background {
   id: number
   name: string
   imageUrl: string
+  usageCount: number
+  autoEligible: boolean
+  showOnHome: boolean
 }
 
 export default function InstagramAdminPage() {
@@ -260,6 +263,48 @@ export default function InstagramAdminPage() {
     fetchTemplates()
   }
 
+  const patchBackground = async (id: number, patch: Partial<Pick<Background, 'name' | 'usageCount' | 'autoEligible' | 'showOnHome'>>) => {
+    const res = await fetch(`/api/instagram/backgrounds?id=${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      alert(`Error: ${err.error ?? res.statusText}`)
+      return
+    }
+    fetchTemplates()
+  }
+
+  const toggleAutoEligible = (bg: Background) =>
+    patchBackground(bg.id, { autoEligible: !bg.autoEligible })
+
+  const toggleShowOnHome = (bg: Background) =>
+    patchBackground(bg.id, { showOnHome: !bg.showOnHome })
+
+  const editUsageCount = (bg: Background) => {
+    const input = prompt('Cantidad de usos:', String(bg.usageCount))
+    if (input === null) return
+    const n = parseInt(input, 10)
+    if (!Number.isFinite(n) || n < 0) {
+      alert('Tiene que ser un entero >= 0')
+      return
+    }
+    patchBackground(bg.id, { usageCount: n })
+  }
+
+  const renameBackground = (bg: Background) => {
+    const input = prompt('Nombre del fondo:', bg.name)
+    if (input === null) return
+    const trimmed = input.trim()
+    if (trimmed.length === 0) {
+      alert('Nombre no puede estar vacío')
+      return
+    }
+    patchBackground(bg.id, { name: trimmed })
+  }
+
   const createPost = async () => {
     setCreating(true)
     // If match selected, generate caption via AI by creating then regenerating
@@ -371,22 +416,65 @@ export default function InstagramAdminPage() {
             </div>
           ))}
           {backgrounds.map(bg => (
-            <div key={bg.id} className="relative group">
+            <div
+              key={bg.id}
+              className={`relative group w-28 ${bg.autoEligible ? '' : 'opacity-50'}`}
+            >
               <img
                 src={bg.imageUrl}
                 alt={bg.name}
-                className="w-20 h-20 rounded-lg object-cover border border-wheat cursor-pointer hover:opacity-80 transition-opacity"
+                className="w-28 h-28 rounded-lg object-cover border border-wheat cursor-pointer hover:opacity-80 transition-opacity"
                 onClick={() => setLightboxUrl(bg.imageUrl)}
               />
               <button
                 onClick={() => deleteBackground(bg.id)}
+                title="Eliminar"
                 className="absolute top-0.5 right-0.5 bg-red-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
               >
                 x
               </button>
-              <span className="absolute bottom-1 left-1 bg-wheat/80 text-navy text-[10px] px-1 py-0.5 rounded font-medium truncate max-w-[70px]">
+              <button
+                onClick={() => editUsageCount(bg)}
+                title="Editar cantidad de usos"
+                className="absolute top-0.5 left-0.5 bg-navy/80 text-cream text-[10px] px-1.5 py-0.5 rounded font-semibold hover:bg-navy"
+              >
+                {bg.usageCount} usos
+              </button>
+              {bg.showOnHome && (
+                <span
+                  title="Visible en el home"
+                  className="absolute top-7 left-0.5 bg-green-600/90 text-white text-[10px] px-1.5 py-0.5 rounded font-semibold"
+                >
+                  home
+                </span>
+              )}
+              <button
+                onClick={() => renameBackground(bg)}
+                title="Renombrar"
+                className="absolute bottom-9 left-0.5 right-0.5 bg-wheat/90 text-navy text-[10px] px-1 py-0.5 rounded font-medium truncate text-left hover:bg-wheat"
+              >
                 {bg.name}
-              </span>
+              </button>
+              <div className="absolute bottom-0 inset-x-0 bg-black/55 text-white text-[10px] px-1 py-0.5 flex items-center justify-between gap-1 rounded-b-lg">
+                <label className="flex items-center gap-1 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={bg.autoEligible}
+                    onChange={() => toggleAutoEligible(bg)}
+                    className="w-3 h-3 accent-wheat"
+                  />
+                  auto
+                </label>
+                <label className="flex items-center gap-1 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={bg.showOnHome}
+                    onChange={() => toggleShowOnHome(bg)}
+                    className="w-3 h-3 accent-wheat"
+                  />
+                  home
+                </label>
+              </div>
             </div>
           ))}
         </div>

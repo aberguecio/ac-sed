@@ -133,7 +133,7 @@ export async function attachComposedImage(opts: {
     orderIndex = count
   }
 
-  return prisma.instagramPostImage.create({
+  const created = await prisma.instagramPostImage.create({
     data: {
       postId,
       imageUrl,
@@ -141,4 +141,17 @@ export async function attachComposedImage(opts: {
       orderIndex,
     },
   })
+
+  // Count this as a "use" for the underlying InstagramBackground when the
+  // backgroundUrl matches one in our table. Local templates (paths under
+  // /public, starting with "/") aren't in the table and won't match — by
+  // design, templates aren't tracked.
+  if (backgroundUrl) {
+    await prisma.instagramBackground.updateMany({
+      where: { imageUrl: backgroundUrl },
+      data: { usageCount: { increment: 1 } },
+    })
+  }
+
+  return created
 }

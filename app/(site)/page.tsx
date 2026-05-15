@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { StandingsTable } from "@/components/standings-table";
 import { NewsCard } from "@/components/news-card";
 import { TeamLogo } from "@/components/team-logo";
+import { HomeGallery, type HomeGalleryImage } from "@/components/home-gallery";
 import Link from "next/link";
 import { ACSED_TEAM_NAME, isACSED } from "@/lib/team-utils";
 
@@ -42,6 +43,20 @@ export default async function HomePage() {
     acsedStanding =
       standings.find((s) => s.team.name === ACSED_TEAM_NAME) || null;
   }
+
+  const homeBackgrounds = await prisma.instagramBackground.findMany({
+    where: { showOnHome: true },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, imageUrl: true, name: true },
+  });
+
+  const galleryImages: HomeGalleryImage[] = [
+    { src: "/team-1.webp", alt: "AC SED Team 1" },
+    { src: "/team-2.webp", alt: "AC SED Team 2" },
+    { src: "/team-3.webp", alt: "AC SED Team 3" },
+    { src: "/team-4.webp", alt: "AC SED Team 4" },
+    ...homeBackgrounds.map((b) => ({ src: b.imageUrl, alt: b.name })),
+  ];
 
   const [latestNews, allPhaseMatches] = await Promise.all([
     prisma.newsArticle.findMany({
@@ -532,23 +547,7 @@ export default async function HomePage() {
                   Nuestro Equipo
                 </h2>
               </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-                {["team-1.webp", "team-2.webp", "team-3.webp", "team-4.webp"].map(
-                  (img, idx) => (
-                    <div
-                      key={idx}
-                      className="relative aspect-square rounded-xl md:rounded-2xl overflow-hidden group cursor-pointer shadow-lg hover:shadow-2xl transition-all duration-300"
-                    >
-                      <img
-                        src={`/${img}`}
-                        alt={`AC SED Team ${idx + 1}`}
-                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                      />
-                      <div className="absolute inset-0 bg-navy/0 group-hover:bg-navy/20 transition-colors duration-300"></div>
-                    </div>
-                  )
-                )}
-              </div>
+              <HomeGallery images={galleryImages} />
             </section>
           </div>
 

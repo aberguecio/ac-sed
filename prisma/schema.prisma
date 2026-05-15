@@ -359,10 +359,13 @@ model MatchCard {
 }
 
 model InstagramBackground {
-  id        Int      @id @default(autoincrement())
-  name      String
-  imageUrl  String
-  createdAt DateTime @default(now())
+  id           Int      @id @default(autoincrement())
+  name         String
+  imageUrl     String
+  createdAt    DateTime @default(now())
+  usageCount   Int      @default(0)
+  autoEligible Boolean  @default(true)
+  showOnHome   Boolean  @default(false)
 }
 
 model InstagramPost {
