@@ -28,6 +28,10 @@ interface Article {
 interface Subscriber {
   email: string
   unsubscribeToken: string
+  // Per-send tracking token. Drives both the open-pixel image src and
+  // the CTA click redirect so we can attribute every event back to a
+  // single NewsletterSend row.
+  trackingToken: string
 }
 
 function buildStandingsHtml(standings: StandingRow[]): string {
@@ -69,7 +73,12 @@ function buildStandingsHtml(standings: StandingRow[]): string {
 }
 
 function buildEmailHtml(article: Article, subscriber: Subscriber, siteUrl: string): string {
-  const articleUrl = `${siteUrl}/news/${article.slug}`
+  // The open tracker is always a 1x1 invisible pixel at the bottom of
+  // the body — the article hero image isn't sent in the mail (it's only
+  // used on the website), so we can't piggyback on it.
+  const trackingToken = encodeURIComponent(subscriber.trackingToken)
+  const openTrackerUrl = `${siteUrl}/api/email/track/open?t=${trackingToken}`
+  const clickTrackerUrl = `${siteUrl}/api/email/track/click?t=${trackingToken}`
   const unsubscribeUrl = `${siteUrl}/unsubscribe?token=${subscriber.unsubscribeToken}`
 
   // Mantener párrafos separados y limitar a 1000 caracteres
@@ -83,9 +92,7 @@ function buildEmailHtml(article: Article, subscriber: Subscriber, siteUrl: strin
     `<p style="color:#555555;font-size:15px;line-height:1.7;text-align:justify;margin:0 0 16px 0;">${p.trim()}</p>`
   ).join('')
 
-  const imageBlock = article.imageUrl
-    ? `<img src="${article.imageUrl}" alt="${article.title}" style="width:100%;max-width:600px;border-radius:8px;margin-bottom:24px;display:block;" />`
-    : ''
+  const trackingPixel = `<img src="${openTrackerUrl}" alt="" width="1" height="1" style="display:block;width:1px;height:1px;border:0;" />`
 
   const standingsBlock = article.standings && article.standings.length > 0
     ? buildStandingsHtml(article.standings)
@@ -130,13 +137,13 @@ function buildEmailHtml(article: Article, subscriber: Subscriber, siteUrl: strin
           <!-- Body -->
           <tr>
             <td style="padding:32px;">
-              ${imageBlock}
               <h1 style="color:#1B2B4B;font-size:24px;font-weight:800;margin:0 0 16px 0;line-height:1.3;">${article.title}</h1>
               ${paragraphs}
-              <a href="${articleUrl}" style="display:inline-block;background-color:#1B2B4B;color:#FAF7F0;text-decoration:none;font-weight:bold;font-size:14px;padding:12px 28px;border-radius:8px;margin-top:8px;">
+              <a href="${clickTrackerUrl}" style="display:inline-block;background-color:#1B2B4B;color:#FAF7F0;text-decoration:none;font-weight:bold;font-size:14px;padding:12px 28px;border-radius:8px;margin-top:8px;">
                 Leer nota completa →
               </a>
               ${standingsBlock}
+              ${trackingPixel}
             </td>
           </tr>
           <!-- Footer -->

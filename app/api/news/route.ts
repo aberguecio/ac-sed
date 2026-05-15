@@ -23,6 +23,49 @@ export async function GET(req: NextRequest) {
     prisma.newsArticle.count({ where }),
   ])
 
+  // Admin list needs newsletter tracking summary per article. Skip the
+  // extra query for the public list — those callers never use it.
+  if (all && articles.length > 0) {
+    const sends = await prisma.newsletterSend.findMany({
+      where: { articleId: { in: articles.map((a) => a.id) } },
+      select: {
+        articleId: true,
+        openCount: true,
+        clickCount: true,
+        firstOpenedAt: true,
+        firstClickedAt: true,
+      },
+    })
+    const statsByArticle = new Map<number, {
+      sentTo: number
+      openedBy: number
+      totalOpens: number
+      clickedBy: number
+      totalClicks: number
+    }>()
+    for (const s of sends) {
+      const row = statsByArticle.get(s.articleId) ?? {
+        sentTo: 0, openedBy: 0, totalOpens: 0, clickedBy: 0, totalClicks: 0,
+      }
+      row.sentTo++
+      row.totalOpens += s.openCount
+      row.totalClicks += s.clickCount
+      if (s.firstOpenedAt) row.openedBy++
+      if (s.firstClickedAt) row.clickedBy++
+      statsByArticle.set(s.articleId, row)
+    }
+    const articlesWithStats = articles.map((a) => ({
+      ...a,
+      newsletterStats: statsByArticle.get(a.id) ?? null,
+    }))
+    return NextResponse.json({
+      articles: articlesWithStats,
+      total,
+      page,
+      pages: Math.ceil(total / perPage),
+    })
+  }
+
   return NextResponse.json({ articles, total, page, pages: Math.ceil(total / perPage) })
 }
 

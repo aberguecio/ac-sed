@@ -46,18 +46,41 @@ export async function POST(
 
   const subscribers = await prisma.newsletterSubscriber.findMany({
     where: { active: true },
-    select: { email: true, unsubscribeToken: true },
+    select: { id: true, email: true, unsubscribeToken: true },
   })
 
   if (subscribers.length === 0) {
     return NextResponse.json({ sent: 0, message: 'No hay suscriptores activos' })
   }
 
+  // Create a NewsletterSend row per subscriber up-front so we can hand the
+  // per-recipient tracking token to the email template. Re-sends for the
+  // same (article, subscriber) reuse the existing row (the unique index
+  // would block a second insert anyway), and we refresh sentAt so the
+  // admin UI reflects the latest dispatch.
+  const sendRows = await Promise.all(
+    subscribers.map((s) =>
+      prisma.newsletterSend.upsert({
+        where: { articleId_subscriberId: { articleId, subscriberId: s.id } },
+        update: { sentAt: new Date() },
+        create: { articleId, subscriberId: s.id },
+        select: { token: true, subscriberId: true },
+      })
+    )
+  )
+  const tokenBySubscriberId = new Map(sendRows.map((r) => [r.subscriberId, r.token]))
+
+  const subscribersWithTokens = subscribers.map((s) => ({
+    email: s.email,
+    unsubscribeToken: s.unsubscribeToken,
+    trackingToken: tokenBySubscriberId.get(s.id) ?? '',
+  }))
+
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://acsed.cl'
 
   const sent = await sendNewsletterEmail(
     { title: article.title, slug: article.slug, content: article.content, imageUrl: article.imageUrl, standings },
-    subscribers,
+    subscribersWithTokens,
     siteUrl
   )
 

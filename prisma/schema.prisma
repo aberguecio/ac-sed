@@ -239,14 +239,54 @@ model NewsArticle {
   featured    Boolean   @default(false)
   emailSentAt DateTime?
   match       Match?    @relation(fields: [matchId], references: [id], onDelete: SetNull)
+  sends       NewsletterSend[]
 }
 
 model NewsletterSubscriber {
-  id               Int      @id @default(autoincrement())
-  email            String   @unique
-  unsubscribeToken String   @unique @default(cuid())
-  subscribedAt     DateTime @default(now())
-  active           Boolean  @default(true)
+  id               Int              @id @default(autoincrement())
+  email            String           @unique
+  unsubscribeToken String           @unique @default(cuid())
+  subscribedAt     DateTime         @default(now())
+  active           Boolean          @default(true)
+  sends            NewsletterSend[]
+}
+
+// One row per (article, subscriber). Holds the tracking token used in
+// the open-pixel image src and the CTA click redirect, plus aggregate
+// counters for quick admin UI rendering.
+model NewsletterSend {
+  id             Int       @id @default(autoincrement())
+  articleId      Int
+  subscriberId   Int
+  token          String    @unique @default(cuid())
+  sentAt         DateTime  @default(now())
+  firstOpenedAt  DateTime?
+  openCount      Int       @default(0)
+  firstClickedAt DateTime?
+  clickCount     Int       @default(0)
+
+  article    NewsArticle          @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  subscriber NewsletterSubscriber @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
+  clicks     NewsletterClick[]
+
+  @@unique([articleId, subscriberId])
+  @@index([articleId])
+  @@index([subscriberId])
+}
+
+// One row per individual click event — lets us show a timeline per
+// subscriber and detect bots/forwards by comparing IP/UA across clicks
+// that share the same send token.
+model NewsletterClick {
+  id        Int      @id @default(autoincrement())
+  sendId    Int
+  clickedAt DateTime @default(now())
+  ip        String?
+  userAgent String?  @db.Text
+
+  send NewsletterSend @relation(fields: [sendId], references: [id], onDelete: Cascade)
+
+  @@index([sendId])
 }
 
 model ScrapeLog {

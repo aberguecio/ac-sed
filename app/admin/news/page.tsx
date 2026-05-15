@@ -1,6 +1,15 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import Link from 'next/link'
+
+interface NewsletterStats {
+  sentTo: number
+  openedBy: number
+  totalOpens: number
+  clickedBy: number
+  totalClicks: number
+}
 
 interface Article {
   id: number
@@ -11,6 +20,7 @@ interface Article {
   generatedAt: string
   aiProvider: string
   emailSentAt: string | null
+  newsletterStats: NewsletterStats | null
 }
 
 interface Match {
@@ -363,6 +373,7 @@ export default function AdminNewsPage() {
                 <th className="px-2 py-2 sm:px-4 sm:py-3 text-left text-gray-500 font-medium">Fecha</th>
                 <th className="px-2 py-2 sm:px-4 sm:py-3 text-left text-gray-500 font-medium">Estado</th>
                 <th className="px-2 py-2 sm:px-4 sm:py-3 text-left text-gray-500 font-medium">IA</th>
+                <th className="px-2 py-2 sm:px-4 sm:py-3 text-left text-gray-500 font-medium">Newsletter</th>
                 <th className="px-2 py-2 sm:px-4 sm:py-3 text-right text-gray-500 font-medium">Acciones</th>
               </tr>
             </thead>
@@ -381,6 +392,26 @@ export default function AdminNewsPage() {
                     </span>
                   </td>
                   <td className="px-2 py-2 sm:px-4 sm:py-3 text-gray-400 text-xs">{a.aiProvider}</td>
+                  <td className="px-2 py-2 sm:px-4 sm:py-3 text-xs text-gray-500 whitespace-nowrap">
+                    {a.newsletterStats ? (
+                      <Link
+                        href={`/admin/news/${a.id}/stats`}
+                        className="flex flex-col gap-0.5 hover:text-navy"
+                        title="Ver detalle de tracking"
+                      >
+                        <span>
+                          <span className="font-semibold text-navy">{a.newsletterStats.openedBy}</span>
+                          <span className="text-gray-400">/{a.newsletterStats.sentTo} abrieron</span>
+                        </span>
+                        <span>
+                          <span className="font-semibold text-navy">{a.newsletterStats.clickedBy}</span>
+                          <span className="text-gray-400"> clickearon ({a.newsletterStats.totalClicks})</span>
+                        </span>
+                      </Link>
+                    ) : (
+                      <span className="text-gray-300">—</span>
+                    )}
+                  </td>
                   <td className="px-2 py-2 sm:px-4 sm:py-3">
                     <div className="flex justify-end gap-2 flex-wrap">
                       <button
