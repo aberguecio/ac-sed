@@ -781,15 +781,6 @@ export default function InstagramAdminPage() {
                       {savingCaption ? 'Guardando...' : 'Guardar'}
                     </button>
                   )}
-                  {editingPost.status === 'draft' && (editingPost.images ?? []).length > 0 && (
-                    <button
-                      onClick={() => publishPost(editingPost)}
-                      disabled={actionId === editingPost.id}
-                      className="text-sm px-4 py-2 bg-navy text-cream font-semibold rounded-lg hover:bg-navy-light disabled:opacity-40"
-                    >
-                      Publicar en Instagram
-                    </button>
-                  )}
                 </div>
               </div>
             </div>

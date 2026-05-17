@@ -74,7 +74,8 @@ export default function StatsPage() {
       setTournaments(data)
       if (data.length > 0) {
         setSelectedTournament(data[0])
-        setSelectedStage(data[0].stages[0])
+        const stages = data[0].stages
+        setSelectedStage(stages[stages.length - 1])
       }
     } catch (err) {
       console.error('Error fetching tournaments:', err)
@@ -84,6 +85,10 @@ export default function StatsPage() {
 
   async function fetchMatchDays() {
     if (!selectedTournament || !selectedStage) return
+
+    // Reset stale state from previous stage before loading new match days
+    setMatchDays([])
+    setSelectedMatchDay(null)
 
     try {
       const res = await fetch(`/api/stats/match-days?tournamentId=${selectedTournament.id}&stageId=${selectedStage.id}`)
