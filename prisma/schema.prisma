@@ -359,13 +359,19 @@ model MatchCard {
 }
 
 model InstagramBackground {
-  id           Int      @id @default(autoincrement())
-  name         String
-  imageUrl     String
-  createdAt    DateTime @default(now())
-  usageCount   Int      @default(0)
-  autoEligible Boolean  @default(true)
-  showOnHome   Boolean  @default(false)
+  id             Int       @id @default(autoincrement())
+  name           String
+  imageUrl       String
+  createdAt      DateTime  @default(now())
+  usageCount     Int       @default(0)
+  autoEligible   Boolean   @default(true)
+  showOnHome     Boolean   @default(false)
+  // AI generation metadata. Null on manually uploaded backgrounds.
+  aiPrompt       String?   @db.Text
+  aiProvider     String?
+  aiModel        String?
+  aiReferenceIds Int[]     @default([])
+  generatedAt    DateTime?
 }
 
 model InstagramPost {

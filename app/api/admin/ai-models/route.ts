@@ -24,6 +24,14 @@ const MINIMAX_MODELS = [
   'abab5.5-chat',
 ]
 
+// Gemini is currently used only for image generation (instagram_image channel).
+// Static suggestions; the model field is freeform so any id works.
+const GEMINI_MODELS = [
+  'gemini-2.5-flash-image-preview',
+  'gemini-2.0-flash-exp',
+  'imagen-3.0-generate-002',
+]
+
 const CHAT_MODEL_RE = /^(gpt-|o1-|o3-|o4-|chatgpt-)/i
 
 type LiveCache = Record<string, { at: number; models: string[] }>
@@ -64,6 +72,10 @@ export async function GET(req: NextRequest) {
 
   if (provider === 'minimax') {
     return NextResponse.json({ provider, source: 'static', models: MINIMAX_MODELS })
+  }
+
+  if (provider === 'gemini') {
+    return NextResponse.json({ provider, source: 'static', models: GEMINI_MODELS })
   }
 
   if (provider === 'deepseek') {

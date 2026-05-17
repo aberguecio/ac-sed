@@ -18,6 +18,10 @@ const CHANNEL_LABELS: Record<string, { title: string; subtitle: string }> = {
     title: 'WhatsApp (agente)',
     subtitle: 'Bot del grupo. Responde preguntas usando tools sobre la base de datos.',
   },
+  instagram_image: {
+    title: 'Instagram · Generación de fondos (AI)',
+    subtitle: 'Genera fondos a partir de imágenes existentes para usar en los posts. El system prompt define el estilo editorial SED.',
+  },
 }
 
 export default async function AdminAiConfigPage() {

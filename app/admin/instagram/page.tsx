@@ -49,7 +49,17 @@ interface Background {
   usageCount: number
   autoEligible: boolean
   showOnHome: boolean
+  aiProvider?: string | null
+  aiPrompt?: string | null
+  aiModel?: string | null
 }
+
+const AI_PROMPT_PRESETS = [
+  'atardecer épico en cancha urbana',
+  'estilo cinematográfico nocturno con luces de estadio',
+  'doble exposición jugadores y cancha',
+  'fondo abstracto con textura, paleta SED',
+]
 
 export default function InstagramAdminPage() {
   const [posts, setPosts] = useState<Post[]>([])
@@ -78,6 +88,13 @@ export default function InstagramAdminPage() {
   // Backgrounds state
   const [backgrounds, setBackgrounds] = useState<Background[]>([])
   const [uploadingBg, setUploadingBg] = useState(false)
+
+  // AI background generator modal
+  const [showAiBgModal, setShowAiBgModal] = useState(false)
+  const [aiBgPrompt, setAiBgPrompt] = useState('')
+  const [aiBgRefIds, setAiBgRefIds] = useState<number[]>([])
+  const [aiBgName, setAiBgName] = useState('')
+  const [generatingBg, setGeneratingBg] = useState(false)
 
   const fetchPosts = useCallback(async () => {
     const res = await fetch('/api/instagram?perPage=50')
@@ -263,6 +280,58 @@ export default function InstagramAdminPage() {
     fetchTemplates()
   }
 
+  const toggleAiRef = (id: number) => {
+    setAiBgRefIds(prev => {
+      if (prev.includes(id)) return prev.filter(x => x !== id)
+      if (prev.length >= 3) {
+        alert('Máximo 3 imágenes de referencia')
+        return prev
+      }
+      return [...prev, id]
+    })
+  }
+
+  const closeAiBgModal = () => {
+    if (generatingBg) return
+    setShowAiBgModal(false)
+    setAiBgPrompt('')
+    setAiBgRefIds([])
+    setAiBgName('')
+  }
+
+  const generateAiBackground = async () => {
+    if (!aiBgPrompt.trim()) {
+      alert('Escribí un prompt para la generación')
+      return
+    }
+    setGeneratingBg(true)
+    try {
+      const res = await fetch('/api/instagram/backgrounds/ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          referenceIds: aiBgRefIds,
+          prompt: aiBgPrompt.trim(),
+          name: aiBgName.trim() || undefined,
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }))
+        alert(`Error generando fondo: ${err.error}`)
+        return
+      }
+      setShowAiBgModal(false)
+      setAiBgPrompt('')
+      setAiBgRefIds([])
+      setAiBgName('')
+      fetchTemplates()
+      setSuccessMsg('Fondo AI generado')
+      setTimeout(() => setSuccessMsg(null), 3000)
+    } finally {
+      setGeneratingBg(false)
+    }
+  }
+
   const patchBackground = async (id: number, patch: Partial<Pick<Background, 'name' | 'usageCount' | 'autoEligible' | 'showOnHome'>>) => {
     const res = await fetch(`/api/instagram/backgrounds?id=${id}`, {
       method: 'PATCH',
@@ -384,19 +453,28 @@ export default function InstagramAdminPage() {
       <div className="mb-8">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold text-navy">Fondos disponibles</h2>
-          <label className={`text-xs px-3 py-1.5 bg-navy text-cream font-semibold rounded-lg cursor-pointer hover:bg-navy-light transition-colors ${uploadingBg ? 'opacity-40 pointer-events-none' : ''}`}>
-            {uploadingBg ? 'Subiendo...' : '+ Subir fondo'}
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              className="hidden"
-              onChange={e => {
-                const file = e.target.files?.[0]
-                if (file) uploadBackground(file)
-                e.target.value = ''
-              }}
-            />
-          </label>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowAiBgModal(true)}
+              className="text-xs px-3 py-1.5 bg-wheat text-navy font-semibold rounded-lg hover:opacity-80 transition-opacity"
+            >
+              ✨ Generar con AI
+            </button>
+            <label className={`text-xs px-3 py-1.5 bg-navy text-cream font-semibold rounded-lg cursor-pointer hover:bg-navy-light transition-colors ${uploadingBg ? 'opacity-40 pointer-events-none' : ''}`}>
+              {uploadingBg ? 'Subiendo...' : '+ Subir fondo'}
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                onChange={e => {
+                  const file = e.target.files?.[0]
+                  if (file) uploadBackground(file)
+                  e.target.value = ''
+                }}
+              />
+            </label>
+          </div>
         </div>
         <div className="flex gap-3 flex-wrap">
           {backgrounds.length === 0 && templates.length === 0 && (
@@ -446,6 +524,14 @@ export default function InstagramAdminPage() {
                   className="absolute top-7 left-0.5 bg-green-600/90 text-white text-[10px] px-1.5 py-0.5 rounded font-semibold"
                 >
                   home
+                </span>
+              )}
+              {bg.aiProvider && (
+                <span
+                  title={`Generado con ${bg.aiProvider}${bg.aiModel ? ` · ${bg.aiModel}` : ''}${bg.aiPrompt ? `\n\nPrompt:\n${bg.aiPrompt}` : ''}`}
+                  className="absolute top-0.5 left-1/2 -translate-x-1/2 bg-wheat text-navy text-[10px] px-1.5 py-0.5 rounded font-bold"
+                >
+                  AI
                 </span>
               )}
               <button
@@ -783,6 +869,112 @@ export default function InstagramAdminPage() {
                   )}
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI background generator modal */}
+      {showAiBgModal && (
+        <div className="fixed inset-0 bg-black/50 z-[65] flex items-center justify-center p-4" onClick={closeAiBgModal}>
+          <div className="bg-white rounded-xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-navy">✨ Generar fondo con AI</h3>
+              <button onClick={closeAiBgModal} disabled={generatingBg} className="text-gray-400 hover:text-gray-600 disabled:opacity-40">×</button>
+            </div>
+
+            <p className="text-xs text-gray-500 mb-4">
+              La AI usa los fondos existentes como referencia y genera uno nuevo. El estilo editorial se aplica desde <code>/admin/ai-config</code>.
+            </p>
+
+            <div className="mb-4">
+              <label className="block text-xs font-semibold text-gray-600 mb-2">
+                Referencias <span className="font-normal text-gray-400">({aiBgRefIds.length}/3)</span>
+              </label>
+              {backgrounds.length === 0 ? (
+                <p className="text-xs text-gray-400">No hay fondos para usar como referencia. Subí al menos uno o generá sin refs.</p>
+              ) : (
+                <div className="flex gap-2 flex-wrap max-h-48 overflow-y-auto p-1 border border-gray-100 rounded-lg">
+                  {backgrounds.map(bg => {
+                    const selected = aiBgRefIds.includes(bg.id)
+                    return (
+                      <button
+                        key={bg.id}
+                        type="button"
+                        onClick={() => toggleAiRef(bg.id)}
+                        className={`relative w-20 h-20 rounded-lg overflow-hidden border-2 transition-all ${selected ? 'border-navy ring-2 ring-wheat' : 'border-gray-200 opacity-70 hover:opacity-100'}`}
+                      >
+                        <img src={bg.imageUrl} alt={bg.name} className="w-full h-full object-cover" />
+                        {selected && (
+                          <span className="absolute top-1 right-1 bg-navy text-cream text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-bold">
+                            {aiBgRefIds.indexOf(bg.id) + 1}
+                          </span>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="mb-3">
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Prompt</label>
+              <textarea
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg"
+                rows={3}
+                placeholder="Describí el fondo que querés generar..."
+                value={aiBgPrompt}
+                onChange={e => setAiBgPrompt(e.target.value)}
+                disabled={generatingBg}
+              />
+            </div>
+
+            <div className="mb-4">
+              <p className="text-xs font-semibold text-gray-600 mb-1">Presets</p>
+              <div className="flex gap-2 flex-wrap">
+                {AI_PROMPT_PRESETS.map(p => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setAiBgPrompt(p)}
+                    disabled={generatingBg}
+                    className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded hover:bg-gray-200 disabled:opacity-40"
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Nombre (opcional)</label>
+              <input
+                type="text"
+                className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg"
+                placeholder="Auto si lo dejás vacío"
+                value={aiBgName}
+                onChange={e => setAiBgName(e.target.value)}
+                disabled={generatingBg}
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={closeAiBgModal}
+                disabled={generatingBg}
+                className="px-4 py-1.5 text-sm rounded border border-gray-200 disabled:opacity-40"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={generateAiBackground}
+                disabled={generatingBg || !aiBgPrompt.trim()}
+                className="px-4 py-1.5 text-sm bg-navy text-cream font-semibold rounded disabled:opacity-40"
+              >
+                {generatingBg ? 'Generando…' : 'Generar'}
+              </button>
             </div>
           </div>
         </div>
