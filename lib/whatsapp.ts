@@ -398,17 +398,37 @@ export function buildGroupSummaryMessage(
 ): string {
   const header = `Partido vs ${rivalName} - ${formatMatchWhen(when)}`
   const venueLine = venue ? `\nCancha: ${venue}` : ''
-  if (rows.length === 0) {
+
+  const sorted = [...rows].sort(sortForSummary)
+  const attending = sorted.filter(r => r.status === 'CONFIRMED' || r.status === 'LATE')
+  const visiting = sorted.filter(r => r.status === 'VISITING')
+  const declined = sorted.filter(r => r.status === 'DECLINED')
+
+  if (attending.length === 0 && visiting.length === 0 && declined.length === 0) {
     return `${header}${venueLine}\n\nAún no hay asistentes confirmados.`
   }
-  const sorted = [...rows].sort(sortForSummary)
-  const lines = sorted.map((r, i) => {
-    const suffix =
-      r.status === 'LATE' ? ' (llega tarde)' :
-      r.status === 'VISITING' ? ' (de visita)' : ''
-    return `${i + 1}. ${r.display}${suffix}`
-  })
-  return `${header}${venueLine}\n\nAsistentes (${sorted.length}):\n${lines.join('\n')}`
+
+  const sections: string[] = []
+
+  if (attending.length > 0) {
+    const lines = attending.map((r, i) => {
+      const suffix = r.status === 'LATE' ? ' (llega tarde)' : ''
+      return `${i + 1}. ${r.display}${suffix}`
+    })
+    sections.push(`Asistentes (${attending.length}):\n${lines.join('\n')}`)
+  }
+
+  if (visiting.length > 0) {
+    const lines = visiting.map((r, i) => `${i + 1}. ${r.display}`)
+    sections.push(`Visita\n${lines.join('\n')}`)
+  }
+
+  if (declined.length > 0) {
+    const lines = declined.map((r, i) => `${i + 1}. ${r.display}`)
+    sections.push(`No asiste\n${lines.join('\n')}`)
+  }
+
+  return `${header}${venueLine}\n\n${sections.join('\n\n')}`
 }
 
 export async function sendAttendanceSummaryToGroup(
@@ -423,7 +443,7 @@ export async function sendAttendanceSummaryToGroup(
       homeTeam: true,
       awayTeam: true,
       playerMatches: {
-        where: { attendanceStatus: { in: ['CONFIRMED', 'LATE', 'VISITING'] } },
+        where: { attendanceStatus: { in: ['CONFIRMED', 'LATE', 'VISITING', 'DECLINED'] } },
         select: {
           attendanceStatus: true,
           player: { select: { name: true, nicknames: true, number: true } },
