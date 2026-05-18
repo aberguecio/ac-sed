@@ -166,7 +166,7 @@ async function handleIncomingText(text: IncomingText): Promise<Record<string, un
   const player = phone
     ? await prisma.player.findFirst({
         where: { phoneNumber: phone },
-        select: { id: true },
+        select: { id: true, name: true, nicknames: true, phoneNumber: true },
       })
     : null
 
@@ -184,9 +184,18 @@ async function handleIncomingText(text: IncomingText): Promise<Record<string, un
 
   const cleanedQuestion = stripBotMention(text.text)
 
+  const sender = player && player.phoneNumber
+    ? {
+        playerId: player.id,
+        playerName: player.name,
+        nicknames: player.nicknames ?? [],
+        phoneNumber: player.phoneNumber,
+      }
+    : undefined
+
   let answer: string
   try {
-    const result = await answerGroupQuestion(cleanedQuestion)
+    const result = await answerGroupQuestion(cleanedQuestion, sender)
     answer = result.answer
   } catch (err) {
     console.error('[whatsapp ai] generation failed', err)

@@ -40,17 +40,34 @@ export interface AnswerGroupQuestionResult {
   finishReason: string
 }
 
+export interface SenderInfo {
+  playerId: number
+  playerName: string
+  nicknames: string[]
+  phoneNumber: string
+}
+
 const FALLBACK_ANSWER = 'Uy, no pude procesar bien esa pregunta. ¿Podés reformularla?'
 
+function buildSenderBlock(s: SenderInfo): string {
+  const nick = s.nicknames.length > 0 ? ` (apodos: ${s.nicknames.join(', ')})` : ''
+  return `Contexto del remitente: ${s.playerName}${nick}, playerId=${s.playerId}, phoneNumber=${s.phoneNumber}.
+Si la pregunta es sobre sí mismo ("mis goles", "mis tarjetas", "voy?"), usa ese playerId directamente sin llamar searchPlayer.
+Si necesitás etiquetarlo en la respuesta, usá @${s.phoneNumber}.`
+}
+
 export async function answerGroupQuestion(
-  question: string
+  question: string,
+  sender?: SenderInfo,
 ): Promise<AnswerGroupQuestionResult> {
   const cfg = await getAiConfig('whatsapp')
   try {
     const tools = pickEnabledTools(cfg.enabledTools)
+    const baseSystem = cfg.systemPromptOverride ?? SYSTEM_PROMPT
+    const system = sender ? `${buildSenderBlock(sender)}\n\n${baseSystem}` : baseSystem
     const { text, toolCalls, finishReason } = await generateText({
       model: getModelForChannel(cfg),
-      system: cfg.systemPromptOverride ?? SYSTEM_PROMPT,
+      system,
       prompt: question,
       maxTokens: cfg.maxTokens,
       temperature: cfg.temperature,
