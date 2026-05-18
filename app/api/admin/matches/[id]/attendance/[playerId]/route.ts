@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import type { AttendanceStatus } from '@prisma/client'
 
-const VALID_STATUSES = ['PENDING', 'CONFIRMED', 'DECLINED', 'LATE', 'NO_SHOW'] as const
+const VALID_STATUSES = ['PENDING', 'CONFIRMED', 'DECLINED', 'LATE', 'NO_SHOW', 'VISITING'] as const
 
 export async function PATCH(
   req: Request,
