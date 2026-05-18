@@ -5,6 +5,7 @@ import { generateMatchNews, generateInstagramCaption } from '@/lib/ai'
 import { ACSED_TEAM_ID } from '@/lib/team-utils'
 import { pickRandomBackgrounds } from '@/lib/instagram-backgrounds'
 import { attachComposedImage } from '@/lib/ig-image-pipeline'
+import { findNextAcsedMatch, runAttendanceBroadcast } from '@/lib/attendance'
 import type { CronJob } from '@prisma/client'
 
 export type JobStatus = 'success' | 'noop' | 'error'
@@ -171,9 +172,31 @@ const handleMondayPromo: JobHandler = async () => {
   return { status: 'success', message: `promo creada para match ${match.id}` }
 }
 
+const handleSaturdayAttendance: JobHandler = async () => {
+  const match = await findNextAcsedMatch()
+  if (!match) {
+    return { status: 'noop', message: 'no hay próximo partido cargado' }
+  }
+
+  const result = await runAttendanceBroadcast(match.id)
+
+  if (result.total === 0) {
+    return {
+      status: 'noop',
+      message: `match ${match.id}: sin jugadores activos con teléfono`,
+    }
+  }
+
+  return {
+    status: 'success',
+    message: `match ${match.id}: enviados=${result.sent} skipped=${result.skipped} fallidos=${result.failed.length}`,
+  }
+}
+
 export const JOB_REGISTRY: Record<string, JobHandler> = {
   'weekly-result': handleWeeklyResult,
   'monday-promo': handleMondayPromo,
+  'saturday-attendance': handleSaturdayAttendance,
 }
 
 export const DEFAULT_JOBS: Array<Pick<CronJob, 'key' | 'name' | 'schedule' | 'timezone'>> = [
@@ -187,6 +210,12 @@ export const DEFAULT_JOBS: Array<Pick<CronJob, 'key' | 'name' | 'schedule' | 'ti
     key: 'monday-promo',
     name: 'Promo del partido (lunes)',
     schedule: '0 9 * * 1',
+    timezone: 'America/Santiago',
+  },
+  {
+    key: 'saturday-attendance',
+    name: 'Encuesta de asistencia (sábado)',
+    schedule: '0 12 * * 6',
     timezone: 'America/Santiago',
   },
 ]

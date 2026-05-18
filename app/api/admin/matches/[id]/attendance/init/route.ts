@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
+import { initializeAttendance } from '@/lib/attendance'
 
-// Bootstrap idempotente: crea PlayerMatch(PENDING) para cada active player que no tenga fila.
+// Bootstrap idempotente: crea PlayerMatch(PENDING) para cada active player
+// que no tenga fila. Comparte la lógica con runAttendanceBroadcast.
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const matchId = parseInt(id)
@@ -14,19 +16,6 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ error: 'Match not found' }, { status: 404 })
   }
 
-  const activePlayers = await prisma.player.findMany({
-    where: { active: true },
-    select: { id: true },
-  })
-
-  const result = await prisma.playerMatch.createMany({
-    data: activePlayers.map(p => ({
-      playerId: p.id,
-      matchId,
-      attendanceStatus: 'PENDING' as const,
-    })),
-    skipDuplicates: true,
-  })
-
-  return NextResponse.json({ created: result.count, total: activePlayers.length })
+  const result = await initializeAttendance(matchId)
+  return NextResponse.json({ created: result.created, total: result.total })
 }
