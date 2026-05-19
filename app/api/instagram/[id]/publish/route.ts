@@ -49,6 +49,21 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       include: { images: { orderBy: { orderIndex: 'asc' } } },
     })
 
+    // Count background uses only on successful publish (local templates with
+    // paths starting with "/" aren't in the InstagramBackground table and
+    // won't match — by design, templates aren't tracked).
+    const bgCounts = new Map<string, number>()
+    for (const img of updated.images) {
+      if (!img.backgroundUrl) continue
+      bgCounts.set(img.backgroundUrl, (bgCounts.get(img.backgroundUrl) ?? 0) + 1)
+    }
+    for (const [url, n] of bgCounts) {
+      await prisma.instagramBackground.updateMany({
+        where: { imageUrl: url },
+        data: { usageCount: { increment: n } },
+      })
+    }
+
     // Prefer the post permalink; fall back to the live account profile URL
     // (username pulled from the Graph API so we don't hardcode an old handle).
     let link = await getMediaPermalink(mediaId)

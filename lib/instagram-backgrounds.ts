@@ -6,8 +6,8 @@ import type { InstagramBackground } from '@prisma/client'
  * least-used so the rotation stays balanced. Ties on `usageCount` are
  * broken randomly. When the pool is smaller than `n` the remaining slots
  * repeat already-picked entries. The `usageCount` increment is NOT done
- * here — it happens later inside `attachComposedImage`, so both auto and
- * manual selections share a single counting point.
+ * here — it happens in the publish endpoint after a post is actually
+ * published, so drafts that are never sent don't inflate the counter.
  *
  * Returns an empty array when the auto-eligible pool is empty (callers
  * fall back to the default template).
