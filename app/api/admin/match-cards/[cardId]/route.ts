@@ -1,10 +1,15 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 
+type PatchBody = {
+  rosterPlayerId?: number | null
+  leaguePlayerId?: number | null
+}
+
 // PATCH /api/admin/match-cards/[cardId] — Reassign the player who got a card.
-// Mirrors /api/admin/match-goals/[goalId]: updates leaguePlayerId +
-// rosterPlayerId, locks the match against scraper overwrites, and resyncs
-// the per-player aggregate so card counts on PlayerMatch stay in sync.
+// Accepts either rosterPlayerId (preferred, supports roster-only parches) or
+// leaguePlayerId (legacy). Resolves the other side from the Player record and
+// locks the match against scraper overwrites.
 export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ cardId: string }> },
@@ -17,10 +22,13 @@ export async function PATCH(
   }
 
   try {
-    const body = (await req.json()) as { leaguePlayerId?: number }
+    const body = (await req.json()) as PatchBody
 
-    if (!('leaguePlayerId' in body) || typeof body.leaguePlayerId !== 'number') {
-      return NextResponse.json({ error: 'leaguePlayerId is required' }, { status: 400 })
+    if (!('rosterPlayerId' in body) && !('leaguePlayerId' in body)) {
+      return NextResponse.json(
+        { error: 'rosterPlayerId or leaguePlayerId required' },
+        { status: 400 },
+      )
     }
 
     const existingCard = await prisma.matchCard.findUnique({
@@ -31,18 +39,44 @@ export async function PATCH(
       return NextResponse.json({ error: 'Card not found' }, { status: 404 })
     }
 
-    const rosterPlayer = await prisma.player.findUnique({
-      where: { leaguePlayerId: body.leaguePlayerId },
-      select: { id: true },
-    })
+    let rosterPlayerId: number | null = null
+    let leaguePlayerId: number | null = null
+
+    if ('rosterPlayerId' in body) {
+      if (body.rosterPlayerId == null) {
+        return NextResponse.json(
+          { error: 'Card holder cannot be cleared; assign a player' },
+          { status: 400 },
+        )
+      }
+      const player = await prisma.player.findUnique({
+        where: { id: body.rosterPlayerId },
+        select: { id: true, leaguePlayerId: true },
+      })
+      if (!player) {
+        return NextResponse.json({ error: 'Roster player not found' }, { status: 404 })
+      }
+      rosterPlayerId = player.id
+      leaguePlayerId = player.leaguePlayerId
+    } else if ('leaguePlayerId' in body) {
+      if (typeof body.leaguePlayerId !== 'number') {
+        return NextResponse.json({ error: 'leaguePlayerId required' }, { status: 400 })
+      }
+      const roster = await prisma.player.findUnique({
+        where: { leaguePlayerId: body.leaguePlayerId },
+        select: { id: true },
+      })
+      rosterPlayerId = roster?.id ?? null
+      leaguePlayerId = body.leaguePlayerId
+    }
 
     const card = await prisma.matchCard.update({
       where: { id },
       data: {
-        leaguePlayerId: body.leaguePlayerId,
-        rosterPlayerId: rosterPlayer?.id ?? null,
+        leaguePlayerId,
+        rosterPlayerId,
       },
-      include: { scrapedPlayer: true },
+      include: { scrapedPlayer: true, rosterPlayer: true },
     })
 
     await prisma.match.update({

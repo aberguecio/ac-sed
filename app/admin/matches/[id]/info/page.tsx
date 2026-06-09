@@ -30,6 +30,8 @@ export default async function MatchInfoPage({ params }: PageProps) {
         include: {
           scrapedPlayer: true,
           assistPlayer: true,
+          rosterPlayer: true,
+          assistRosterPlayer: true,
         },
         orderBy: { createdAt: 'asc' },
       },
@@ -39,6 +41,7 @@ export default async function MatchInfoPage({ params }: PageProps) {
         },
         include: {
           scrapedPlayer: true,
+          rosterPlayer: true,
         },
         orderBy: [{ minute: 'asc' }, { createdAt: 'asc' }],
       },
@@ -46,9 +49,11 @@ export default async function MatchInfoPage({ params }: PageProps) {
   })
   if (!match) notFound()
 
-  // Get all players for the assist selector (only those with leaguePlayerId)
+  // All active roster players, including those without a Liga B link
+  // (e.g. parche substitutes). Editors expose them by rosterPlayerId so
+  // goals/cards can be assigned to roster-only players.
   const players = await prisma.player.findMany({
-    where: { active: true, leaguePlayerId: { not: null } },
+    where: { active: true },
     orderBy: [{ number: 'asc' }, { name: 'asc' }],
     select: { id: true, name: true, number: true, leaguePlayerId: true },
   })

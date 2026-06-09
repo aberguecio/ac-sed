@@ -4,10 +4,14 @@ import { useState } from 'react'
 
 interface Goal {
   id: number
-  leaguePlayerId: number
-  scrapedPlayer: { id: number; firstName: string; lastName: string }
+  leaguePlayerId: number | null
+  rosterPlayerId: number | null
+  scrapedPlayer: { id: number; firstName: string; lastName: string; teamId: number | null } | null
+  rosterPlayer: { id: number; name: string; number: number | null; photoUrl: string | null; nicknames: string[]; leaguePlayerId: number | null } | null
   assistPlayer: { id: number; firstName: string; lastName: string } | null
+  assistRosterPlayer: { id: number; name: string; number: number | null; photoUrl: string | null; nicknames: string[]; leaguePlayerId: number | null } | null
   assistLeaguePlayerId: number | null
+  assistRosterPlayerId: number | null
   teamName: string
 }
 
@@ -24,22 +28,39 @@ interface GoalsAssistsEditorProps {
   players: Player[]
 }
 
+// Resolve the rosterPlayerId currently linked to a goal/assist. When the
+// stored rosterPlayerId is null, fall back to looking up by leaguePlayerId
+// (so existing scraper-only goals select the matching roster player by
+// default).
+function resolveRosterId(
+  rosterPlayerId: number | null,
+  leaguePlayerId: number | null,
+  players: Player[],
+): number | null {
+  if (rosterPlayerId != null) return rosterPlayerId
+  if (leaguePlayerId != null) {
+    const match = players.find(p => p.leaguePlayerId === leaguePlayerId)
+    if (match) return match.id
+  }
+  return null
+}
+
 export function GoalsAssistsEditor({ matchId, goals, players }: GoalsAssistsEditorProps) {
-  const [goalScorers, setGoalScorers] = useState<Map<number, number>>(
+  const [goalScorers, setGoalScorers] = useState<Map<number, number | null>>(
     new Map(
-      goals.map(g => [g.id, g.leaguePlayerId])
+      goals.map(g => [g.id, resolveRosterId(g.rosterPlayerId, g.leaguePlayerId, players)])
     )
   )
   const [goalAssists, setGoalAssists] = useState<Map<number, number | null>>(
     new Map(
-      goals.map(g => [g.id, g.assistLeaguePlayerId])
+      goals.map(g => [g.id, resolveRosterId(g.assistRosterPlayerId, g.assistLeaguePlayerId, players)])
     )
   )
   const [saving, setSaving] = useState<number | null>(null)
   const [messages, setMessages] = useState<Map<number, { type: 'success' | 'error'; text: string }>>(new Map())
 
-  const handleScorerChange = async (goalId: number, leaguePlayerId: number) => {
-    setGoalScorers(prev => new Map(prev).set(goalId, leaguePlayerId))
+  const handleScorerChange = async (goalId: number, rosterPlayerId: number) => {
+    setGoalScorers(prev => new Map(prev).set(goalId, rosterPlayerId))
     setSaving(goalId)
     setMessages(prev => {
       const newMap = new Map(prev)
@@ -51,9 +72,7 @@ export function GoalsAssistsEditor({ matchId, goals, players }: GoalsAssistsEdit
       const res = await fetch(`/api/admin/match-goals/${goalId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          leaguePlayerId,
-        }),
+        body: JSON.stringify({ rosterPlayerId }),
       })
 
       if (!res.ok) {
@@ -79,8 +98,8 @@ export function GoalsAssistsEditor({ matchId, goals, players }: GoalsAssistsEdit
     }
   }
 
-  const handleAssistChange = async (goalId: number, assistLeaguePlayerId: number | null) => {
-    setGoalAssists(prev => new Map(prev).set(goalId, assistLeaguePlayerId))
+  const handleAssistChange = async (goalId: number, assistRosterPlayerId: number | null) => {
+    setGoalAssists(prev => new Map(prev).set(goalId, assistRosterPlayerId))
     setSaving(goalId)
     setMessages(prev => {
       const newMap = new Map(prev)
@@ -92,9 +111,7 @@ export function GoalsAssistsEditor({ matchId, goals, players }: GoalsAssistsEdit
       const res = await fetch(`/api/admin/match-goals/${goalId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          assistLeaguePlayerId,
-        }),
+        body: JSON.stringify({ assistRosterPlayerId }),
       })
 
       if (!res.ok) {
@@ -123,8 +140,10 @@ export function GoalsAssistsEditor({ matchId, goals, players }: GoalsAssistsEdit
   return (
     <div className="space-y-4">
       {goals.map(goal => {
-        const scraperScorer = `${goal.scrapedPlayer.firstName} ${goal.scrapedPlayer.lastName}`
-        const currentScorer = goalScorers.get(goal.id)
+        const scraperScorer = goal.scrapedPlayer
+          ? `${goal.scrapedPlayer.firstName} ${goal.scrapedPlayer.lastName}`
+          : '(sin atribución de scraper)'
+        const currentScorer = goalScorers.get(goal.id) ?? ''
         const currentAssist = goalAssists.get(goal.id)
         const message = messages.get(goal.id)
         const isSaving = saving === goal.id
@@ -156,9 +175,11 @@ export function GoalsAssistsEditor({ matchId, goals, players }: GoalsAssistsEdit
                   disabled={isSaving}
                   className="flex-1 border border-gray-200 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy/20 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {players.filter(p => p.leaguePlayerId).map(player => (
-                    <option key={player.leaguePlayerId} value={player.leaguePlayerId!}>
+                  {currentScorer === '' && <option value="">Sin asignar</option>}
+                  {players.map(player => (
+                    <option key={player.id} value={player.id}>
                       {player.number ? `#${player.number} ` : ''}{player.name}
+                      {player.leaguePlayerId == null ? ' (parche)' : ''}
                     </option>
                   ))}
                 </select>
@@ -171,15 +192,16 @@ export function GoalsAssistsEditor({ matchId, goals, players }: GoalsAssistsEdit
                 </label>
                 <select
                   id={`assist-${goal.id}`}
-                  value={currentAssist || ''}
+                  value={currentAssist ?? ''}
                   onChange={e => handleAssistChange(goal.id, e.target.value ? parseInt(e.target.value) : null)}
                   disabled={isSaving}
                   className="flex-1 border border-gray-200 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy/20 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <option value="">Sin asistencia</option>
-                  {players.filter(p => p.leaguePlayerId).map(player => (
-                    <option key={player.leaguePlayerId} value={player.leaguePlayerId!}>
+                  {players.map(player => (
+                    <option key={player.id} value={player.id}>
                       {player.number ? `#${player.number} ` : ''}{player.name}
+                      {player.leaguePlayerId == null ? ' (parche)' : ''}
                     </option>
                   ))}
                 </select>

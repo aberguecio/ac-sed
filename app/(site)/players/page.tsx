@@ -36,10 +36,12 @@ export default async function PlayersPage() {
     orderBy: [{ number: 'asc' }, { name: 'asc' }],
   })
 
-  // Get all goals from MatchGoal and count by leaguePlayerId
+  // Match a goal to a roster player by rosterPlayerId (preferred — covers
+  // parche players without a Liga B link) or by leaguePlayerId fallback.
   const allGoals = await prisma.matchGoal.findMany({
     select: {
       leaguePlayerId: true,
+      rosterPlayerId: true,
       match: {
         select: {
           tournamentId: true,
@@ -50,13 +52,18 @@ export default async function PlayersPage() {
     }
   })
 
-  // Calculate stats for each player
   const playersWithStats = players.map(player => {
-    if (!player.leaguePlayerId) {
-      return { ...player, totalGoals: 0, currentPhaseGoals: 0 }
-    }
-
-    const playerGoals = allGoals.filter(g => g.leaguePlayerId === player.leaguePlayerId)
+    const playerGoals = allGoals.filter(g => {
+      if (g.rosterPlayerId === player.id) return true
+      if (
+        player.leaguePlayerId != null &&
+        g.leaguePlayerId === player.leaguePlayerId &&
+        g.rosterPlayerId == null
+      ) {
+        return true
+      }
+      return false
+    })
     const totalGoals = playerGoals.length
     const currentPhaseGoals = latestMatch
       ? playerGoals.filter(g =>

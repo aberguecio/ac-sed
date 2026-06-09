@@ -4,12 +4,14 @@ import { useState } from 'react'
 
 interface Card {
   id: number
-  leaguePlayerId: number
+  leaguePlayerId: number | null
+  rosterPlayerId: number | null
   cardType: string
   minute: number | null
   reason: string | null
   teamName: string
-  scrapedPlayer: { id: number; firstName: string; lastName: string }
+  scrapedPlayer: { id: number; firstName: string; lastName: string; teamId: number | null } | null
+  rosterPlayer: { id: number; name: string; number: number | null; photoUrl: string | null; nicknames: string[]; leaguePlayerId: number | null } | null
 }
 
 interface Player {
@@ -24,17 +26,30 @@ interface CardsEditorProps {
   players: Player[]
 }
 
+function resolveRosterId(
+  rosterPlayerId: number | null,
+  leaguePlayerId: number | null,
+  players: Player[],
+): number | null {
+  if (rosterPlayerId != null) return rosterPlayerId
+  if (leaguePlayerId != null) {
+    const match = players.find(p => p.leaguePlayerId === leaguePlayerId)
+    if (match) return match.id
+  }
+  return null
+}
+
 export function CardsEditor({ cards, players }: CardsEditorProps) {
-  const [cardPlayers, setCardPlayers] = useState<Map<number, number>>(
-    new Map(cards.map(c => [c.id, c.leaguePlayerId])),
+  const [cardPlayers, setCardPlayers] = useState<Map<number, number | null>>(
+    new Map(cards.map(c => [c.id, resolveRosterId(c.rosterPlayerId, c.leaguePlayerId, players)])),
   )
   const [saving, setSaving] = useState<number | null>(null)
   const [messages, setMessages] = useState<Map<number, { type: 'success' | 'error'; text: string }>>(
     new Map(),
   )
 
-  const handlePlayerChange = async (cardId: number, leaguePlayerId: number) => {
-    setCardPlayers(prev => new Map(prev).set(cardId, leaguePlayerId))
+  const handlePlayerChange = async (cardId: number, rosterPlayerId: number) => {
+    setCardPlayers(prev => new Map(prev).set(cardId, rosterPlayerId))
     setSaving(cardId)
     setMessages(prev => {
       const next = new Map(prev)
@@ -46,7 +61,7 @@ export function CardsEditor({ cards, players }: CardsEditorProps) {
       const res = await fetch(`/api/admin/match-cards/${cardId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ leaguePlayerId }),
+        body: JSON.stringify({ rosterPlayerId }),
       })
 
       if (!res.ok) {
@@ -77,8 +92,10 @@ export function CardsEditor({ cards, players }: CardsEditorProps) {
   return (
     <div className="space-y-4">
       {cards.map(card => {
-        const scraperPlayer = `${card.scrapedPlayer.firstName} ${card.scrapedPlayer.lastName}`
-        const currentPlayer = cardPlayers.get(card.id)
+        const scraperPlayer = card.scrapedPlayer
+          ? `${card.scrapedPlayer.firstName} ${card.scrapedPlayer.lastName}`
+          : '(sin atribución de scraper)'
+        const currentPlayer = cardPlayers.get(card.id) ?? ''
         const message = messages.get(card.id)
         const isSaving = saving === card.id
         const isRed = card.cardType === 'red'
@@ -115,14 +132,14 @@ export function CardsEditor({ cards, players }: CardsEditorProps) {
                   disabled={isSaving}
                   className="flex-1 border border-gray-200 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy/20 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {players
-                    .filter(p => p.leaguePlayerId)
-                    .map(player => (
-                      <option key={player.leaguePlayerId} value={player.leaguePlayerId!}>
-                        {player.number ? `#${player.number} ` : ''}
-                        {player.name}
-                      </option>
-                    ))}
+                  {currentPlayer === '' && <option value="">Sin asignar</option>}
+                  {players.map(player => (
+                    <option key={player.id} value={player.id}>
+                      {player.number ? `#${player.number} ` : ''}
+                      {player.name}
+                      {player.leaguePlayerId == null ? ' (parche)' : ''}
+                    </option>
+                  ))}
                 </select>
               </div>
 
