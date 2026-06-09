@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { BackgroundUploadModal } from '@/components/background-upload-modal'
 
 interface PostImage {
   id: number
@@ -87,7 +88,7 @@ export default function InstagramAdminPage() {
 
   // Backgrounds state
   const [backgrounds, setBackgrounds] = useState<Background[]>([])
-  const [uploadingBg, setUploadingBg] = useState(false)
+  const [bgUploadQueue, setBgUploadQueue] = useState<File[] | null>(null)
 
   // AI background generator modal
   const [showAiBgModal, setShowAiBgModal] = useState(false)
@@ -260,18 +261,9 @@ export default function InstagramAdminPage() {
     setActionId(null)
   }
 
-  const uploadBackground = async (file: File) => {
-    setUploadingBg(true)
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('name', file.name.replace(/\.[^.]+$/, ''))
-    const res = await fetch('/api/instagram/backgrounds', { method: 'POST', body: formData })
-    setUploadingBg(false)
-    if (!res.ok) {
-      alert('Error subiendo fondo')
-      return
-    }
-    fetchTemplates()
+  const openBgUploader = (files: FileList | null) => {
+    if (!files || files.length === 0) return
+    setBgUploadQueue(Array.from(files))
   }
 
   const deleteBackground = async (id: number) => {
@@ -461,15 +453,15 @@ export default function InstagramAdminPage() {
             >
               ✨ Generar con AI
             </button>
-            <label className={`text-xs px-3 py-1.5 bg-navy text-cream font-semibold rounded-lg cursor-pointer hover:bg-navy-light transition-colors ${uploadingBg ? 'opacity-40 pointer-events-none' : ''}`}>
-              {uploadingBg ? 'Subiendo...' : '+ Subir fondo'}
+            <label className="text-xs px-3 py-1.5 bg-navy text-cream font-semibold rounded-lg cursor-pointer hover:bg-navy-light transition-colors">
+              + Subir fondos
               <input
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
+                multiple
                 className="hidden"
                 onChange={e => {
-                  const file = e.target.files?.[0]
-                  if (file) uploadBackground(file)
+                  openBgUploader(e.target.files)
                   e.target.value = ''
                 }}
               />
@@ -1053,6 +1045,14 @@ export default function InstagramAdminPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {bgUploadQueue && bgUploadQueue.length > 0 && (
+        <BackgroundUploadModal
+          files={bgUploadQueue}
+          onClose={() => setBgUploadQueue(null)}
+          onAllUploaded={() => fetchTemplates()}
+        />
       )}
     </div>
   )
