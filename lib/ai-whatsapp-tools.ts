@@ -217,7 +217,7 @@ export const getMatchGoalsTool = tool({
     const [goals, nameMap] = await Promise.all([
       prisma.matchGoal.findMany({
         where: { matchId },
-        include: { scrapedPlayer: true },
+        include: { scrapedPlayer: true, rosterPlayer: true },
         orderBy: { minute: 'asc' },
       }),
       buildLeaguePlayerNameMap(),
@@ -469,7 +469,7 @@ export const getTopScorersTool = tool({
     const [goals, nameMap] = await Promise.all([
       prisma.matchGoal.findMany({
         where: goalWhere,
-        include: { scrapedPlayer: true },
+        include: { scrapedPlayer: true, rosterPlayer: true },
       }),
       buildLeaguePlayerNameMap(),
     ])
@@ -582,6 +582,7 @@ export const getTeamCardsTool = tool({
         },
         include: {
           scrapedPlayer: true,
+          rosterPlayer: true,
           match: {
             select: {
               id: true,
@@ -611,9 +612,12 @@ export const getTeamCardsTool = tool({
       lastCardType: string | null
       lastCardDate: string | null
     }
+    // Group by leaguePlayerId when present; fall back to rosterPlayerId
+    // (negative-prefixed to avoid collisions with positive league ids) so
+    // roster-only cards still aggregate per player.
     const byPlayer = new Map<number, Bucket>()
     for (const c of cards) {
-      const key = c.leaguePlayerId
+      const key = c.leaguePlayerId ?? (c.rosterPlayerId != null ? -c.rosterPlayerId : 0)
       const name = canonicalScorerName(c, nameMap)
       const homeName = c.match.homeTeam?.name ?? 'TBD'
       const awayName = c.match.awayTeam?.name ?? 'TBD'

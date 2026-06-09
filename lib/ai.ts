@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db'
 import { isACSED, ACSED_TEAM_ID } from '@/lib/team-utils'
 import { getAiConfig, getModelForChannel, cleanModelText } from '@/lib/ai-config'
 import { isOutOfCreditError, notifyAiOutOfCredits } from '@/lib/whatsapp-notifier'
+import { scorerRef, assistRef, cardPlayerRef, type PlayerRef } from '@/lib/player-ref'
 
 // Export this function to reuse in other parts of the app
 export async function getMatchContext(match: Match & { homeTeam?: { name: string } | null; awayTeam?: { name: string } | null }) {
@@ -16,13 +17,6 @@ export async function getMatchContext(match: Match & { homeTeam?: { name: string
   const isHome = isACSED(homeTeamName)
   const opponentName = isHome ? awayTeamName : homeTeamName
 
-  // Get all roster players with leaguePlayerId to map league IDs to roster players (for nicknames)
-  const allPlayers = await prisma.player.findMany({
-    where: { leaguePlayerId: { not: null } },
-    select: { id: true, leaguePlayerId: true, name: true, nicknames: true },
-  })
-  const leagueToPlayer = new Map(allPlayers.map(p => [p.leaguePlayerId!, p]))
-
   // Fetch all context data in parallel
   const [goals, cards, playerMatches, previousMatches, upcomingMatches, otherMatchesInRound, historicalMatches] = await Promise.all([
     prisma.matchGoal.findMany({
@@ -30,11 +24,13 @@ export async function getMatchContext(match: Match & { homeTeam?: { name: string
       include: {
         scrapedPlayer: true,
         assistPlayer: true,
+        rosterPlayer: true,
+        assistRosterPlayer: true,
       }
     }),
     prisma.matchCard.findMany({
       where: { matchId: match.id },
-      include: { scrapedPlayer: true }
+      include: { scrapedPlayer: true, rosterPlayer: true }
     }),
     // Get attendance and aggregated performance from PlayerMatch
     prisma.playerMatch.findMany({
@@ -288,27 +284,15 @@ export async function generateMatchNews(
     hasGroupContext,
   } = context
 
-  // Get roster players to map leaguePlayerId to names and nicknames
-  const allPlayers = await prisma.player.findMany({
-    where: { leaguePlayerId: { not: null } },
-    select: { id: true, leaguePlayerId: true, name: true, nicknames: true },
-  })
-  const leagueToPlayer = new Map(allPlayers.map(p => [p.leaguePlayerId!, p]))
-
   // Format a player for the prompt: roster name + nicknames as alternatives.
   // The prompt rules tell the model to pick ONE form per mention — not list
   // all of them.
-  const formatPlayer = (
-    leaguePlayerId: number,
-    fallbackFirst: string,
-    fallbackLast: string,
-  ): string => {
-    const rp = leagueToPlayer.get(leaguePlayerId)
-    const realName = rp?.name || `${fallbackFirst} ${fallbackLast}`
-    const aliases = rp?.nicknames ?? []
+  const formatRef = (ref: PlayerRef | null): string => {
+    if (!ref) return 'Desconocido'
+    const aliases = ref.nicknames
     return aliases.length > 0
-      ? `${realName} [alternativas: ${aliases.join(' / ')}]`
-      : realName
+      ? `${ref.name} [alternativas: ${aliases.join(' / ')}]`
+      : ref.name
   }
 
   // Format goals by team. AC SED ownership is decided by the linked
@@ -329,17 +313,17 @@ export async function generateMatchNews(
   let goalsInfo = ''
   if (acsedGoals.length > 0) {
     const goalScorers = acsedGoals.map(g => {
-      const scorer = formatPlayer(g.leaguePlayerId, g.scrapedPlayer.firstName, g.scrapedPlayer.lastName)
-      if (g.assistPlayer && g.assistLeaguePlayerId) {
-        const assister = formatPlayer(g.assistLeaguePlayerId, g.assistPlayer.firstName, g.assistPlayer.lastName)
-        return `${scorer} (asistencia de ${assister})`
+      const scorer = formatRef(scorerRef(g))
+      const assister = assistRef(g)
+      if (assister) {
+        return `${scorer} (asistencia de ${formatRef(assister)})`
       }
       return scorer
     }).join(', ')
     goalsInfo += `\n- Goleadores AC SED: ${goalScorers}`
   }
   if (rivalGoals.length > 0) {
-    const goalScorers = rivalGoals.map(g => `${g.scrapedPlayer.firstName} ${g.scrapedPlayer.lastName}`).join(', ')
+    const goalScorers = rivalGoals.map(g => scorerRef(g)?.name ?? 'Desconocido').join(', ')
     goalsInfo += `\n- Goleadores ${rival}: ${goalScorers}`
   }
 
@@ -349,12 +333,12 @@ export async function generateMatchNews(
     const redCards = acsedCards.filter(c => c.cardType === 'red')
     if (yellowCards.length > 0) {
       cardsInfo += `\n- Tarjetas amarillas AC SED: ${yellowCards
-        .map(c => formatPlayer(c.leaguePlayerId, c.scrapedPlayer.firstName, c.scrapedPlayer.lastName))
+        .map(c => formatRef(cardPlayerRef(c)))
         .join(', ')}`
     }
     if (redCards.length > 0) {
       cardsInfo += `\n- Tarjetas rojas AC SED: ${redCards
-        .map(c => formatPlayer(c.leaguePlayerId, c.scrapedPlayer.firstName, c.scrapedPlayer.lastName))
+        .map(c => formatRef(cardPlayerRef(c)))
         .join(', ')}`
     }
   }
@@ -639,15 +623,6 @@ export async function generateInstagramCaption(
   const context = await getMatchContext(match)
   const { goals, standingsRows } = context
 
-  // Get roster players to map leaguePlayerId to roster names + nicknames
-  // (for Instagram captions). The nickname field powers the new
-  // "prefer one nickname" rule in the prompt.
-  const allPlayers = await prisma.player.findMany({
-    where: { leaguePlayerId: { not: null } },
-    select: { leaguePlayerId: true, name: true, nicknames: true },
-  })
-  const leagueToPlayer = new Map(allPlayers.map(p => [p.leaguePlayerId!, p]))
-
   const igSystemPrompt = `Eres el community manager de Instagram del club AC SED (@ac.sed_2023). Es un club de fútbol amateur con onda cervecera, de ahí su nombre AC Sed.`
 
   const igRules = `- Usa emojis (futbol, cerveza, fuego, trofeo, etc.)
@@ -716,13 +691,10 @@ ${igRules}`
   // Format an AC SED player for the IG prompt: pass the first name AND any
   // nicknames so the model can pick one. The IG prompt rules below tell the
   // model to prefer a nickname (just one) over the first name.
-  const formatIgPlayer = (
-    leaguePlayerId: number,
-    fallbackFirst: string,
-  ): string => {
-    const rp = leagueToPlayer.get(leaguePlayerId)
-    const firstName = rp?.name.split(' ')[0] || fallbackFirst
-    const aliases = rp?.nicknames ?? []
+  const formatIgRef = (ref: PlayerRef | null): string => {
+    if (!ref) return 'Desconocido'
+    const firstName = ref.name.split(' ')[0] || ref.name
+    const aliases = ref.nicknames
     return aliases.length > 0
       ? `${firstName} [apodos: ${aliases.join(' / ')}]`
       : firstName
@@ -731,12 +703,12 @@ ${igRules}`
   const acsedGoals = goals.filter(isAcsedGoal)
   const scorersStr = acsedGoals.length > 0
     ? acsedGoals.map(g => {
-        const scorerName = formatIgPlayer(g.leaguePlayerId, g.scrapedPlayer.firstName)
+        const scorerName = formatIgRef(scorerRef(g))
         const scorer = `${scorerName} ${g.minute ? `(${g.minute}')` : ''}`
 
-        if (g.assistPlayer && g.assistLeaguePlayerId) {
-          const assisterName = formatIgPlayer(g.assistLeaguePlayerId, g.assistPlayer.firstName)
-          return `${scorer} (asistencia de ${assisterName})`
+        const assister = assistRef(g)
+        if (assister) {
+          return `${scorer} (asistencia de ${formatIgRef(assister)})`
         }
         return scorer
       }).join(', ')

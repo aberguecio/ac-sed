@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db'
 import { uploadImageToS3 } from '@/lib/aws'
 import { isACSED } from '@/lib/team-utils'
 import { getMatchContext } from '@/lib/ai'
+import { scorerRef, assistRef } from '@/lib/player-ref'
 import {
   generateResultImage,
   generateStandingsImage,
@@ -72,16 +73,9 @@ async function buildStandingsBuffer(bg: string | null, match: MatchWithTeams) {
     isACSED: isACSED(row.teamName),
   }))
 
-  const allPlayers = await prisma.player.findMany({
-    where: { leaguePlayerId: { not: null } },
-    select: { leaguePlayerId: true, name: true },
-  })
-  const leagueToPlayer = new Map(allPlayers.map(p => [p.leaguePlayerId!, p]))
-
   const scorerMap = new Map<string, { name: string; goals: number; minute: number | null }>()
   for (const g of context.goals.filter((g: any) => isACSED(g.teamName))) {
-    const rosterPlayer = leagueToPlayer.get(g.leaguePlayerId)
-    const name = rosterPlayer?.name || `${g.scrapedPlayer.firstName} ${g.scrapedPlayer.lastName}`
+    const name = scorerRef(g)?.name ?? 'Desconocido'
     const existing = scorerMap.get(name)
     if (existing) existing.goals++
     else scorerMap.set(name, { name, goals: 1, minute: g.minute })
@@ -89,8 +83,7 @@ async function buildStandingsBuffer(bg: string | null, match: MatchWithTeams) {
 
   const assistMap = new Map<string, { name: string; assists: number }>()
   for (const a of context.goals.filter((g: any) => isACSED(g.teamName) && g.assistLeaguePlayerId)) {
-    const rosterPlayer = leagueToPlayer.get(a.assistLeaguePlayerId as number)
-    const name = rosterPlayer?.name || (a.assistPlayer ? `${a.assistPlayer.firstName} ${a.assistPlayer.lastName}` : 'Desconocido')
+    const name = assistRef(a)?.name ?? 'Desconocido'
     const existing = assistMap.get(name)
     if (existing) existing.assists++
     else assistMap.set(name, { name, assists: 1 })
