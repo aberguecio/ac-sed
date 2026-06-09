@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db'
+import { ACSED_TEAM_ID } from '@/lib/team-utils'
 import type { DisciplineResult } from './types'
 
 export interface DisciplineInput {
@@ -43,7 +44,13 @@ async function teamDiscipline(
       id: true,
       date: true,
       homeTeamId: true,
-      cards: { select: { cardType: true, scrapedPlayer: { select: { teamId: true } } } },
+      cards: {
+        select: {
+          cardType: true,
+          rosterPlayerId: true,
+          scrapedPlayer: { select: { teamId: true } },
+        },
+      },
     },
     orderBy: { date: 'desc' },
   })
@@ -51,7 +58,9 @@ async function teamDiscipline(
   let totalCards = 0
   for (const m of phaseMatches) {
     for (const c of m.cards) {
-      if (c.scrapedPlayer.teamId === teamId) totalCards++
+      const rosterOwned = c.rosterPlayerId != null && teamId === ACSED_TEAM_ID
+      const scrapedOwned = c.scrapedPlayer?.teamId === teamId
+      if (rosterOwned || scrapedOwned) totalCards++
     }
   }
   const avgCards = phaseMatches.length > 0 ? totalCards / phaseMatches.length : 0
@@ -66,7 +75,13 @@ async function teamDiscipline(
     },
     select: {
       id: true,
-      cards: { select: { cardType: true, scrapedPlayer: { select: { teamId: true } } } },
+      cards: {
+        select: {
+          cardType: true,
+          rosterPlayerId: true,
+          scrapedPlayer: { select: { teamId: true } },
+        },
+      },
     },
     orderBy: { date: 'desc' },
     take: recentMatchesWindow,
@@ -75,7 +90,10 @@ async function teamDiscipline(
   let recentReds = 0
   for (const m of recent) {
     for (const c of m.cards) {
-      if (c.cardType === 'red' && c.scrapedPlayer.teamId === teamId) recentReds++
+      if (c.cardType !== 'red') continue
+      const rosterOwned = c.rosterPlayerId != null && teamId === ACSED_TEAM_ID
+      const scrapedOwned = c.scrapedPlayer?.teamId === teamId
+      if (rosterOwned || scrapedOwned) recentReds++
     }
   }
 

@@ -1,4 +1,5 @@
 import { prisma } from './db'
+import { scorerRef } from './player-ref'
 
 interface StandingRow {
   teamName: string
@@ -172,19 +173,28 @@ export async function calculateScorersUpToDate(
     },
     include: {
       scrapedPlayer: true,
+      rosterPlayer: true,
     },
   })
 
-  // Aggregate goals by player
+  // Aggregate goals by player. Use a stable per-player key so a goal linked
+  // to both a roster Player and a ScrapedPlayer doesn't double-count under
+  // two different names.
   const playerGoals = new Map<string, { playerName: string; teamName: string; goals: number }>()
 
   for (const goal of goals) {
-    const playerName = `${goal.scrapedPlayer.firstName} ${goal.scrapedPlayer.lastName}`.trim()
+    const ref = scorerRef(goal)
+    if (!ref) continue
     const teamName = goal.teamName
-    const key = `${playerName}::${teamName}`
+    const identity = ref.rosterPlayerId != null
+      ? `r:${ref.rosterPlayerId}`
+      : ref.leaguePlayerId != null
+        ? `l:${ref.leaguePlayerId}`
+        : `n:${ref.name}`
+    const key = `${identity}::${teamName}`
 
     if (!playerGoals.has(key)) {
-      playerGoals.set(key, { playerName, teamName, goals: 0 })
+      playerGoals.set(key, { playerName: ref.name, teamName, goals: 0 })
     }
 
     playerGoals.get(key)!.goals++

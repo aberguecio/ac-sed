@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db'
+import { ACSED_TEAM_ID } from '@/lib/team-utils'
 import type { ScorersResult, TopScorer } from './types'
 
 export interface ScorersInput {
@@ -41,7 +42,9 @@ async function teamScorers(
       id: true,
       goals: {
         select: {
+          rosterPlayerId: true,
           scrapedPlayer: { select: { firstName: true, lastName: true, teamId: true } },
+          rosterPlayer: { select: { name: true } },
         },
       },
     },
@@ -51,8 +54,14 @@ async function teamScorers(
   let teamTotal = 0
   for (const m of matches) {
     for (const g of m.goals) {
-      if (g.scrapedPlayer.teamId !== teamId) continue
-      const name = `${g.scrapedPlayer.firstName} ${g.scrapedPlayer.lastName}`.trim()
+      const rosterOwned = g.rosterPlayerId != null && teamId === ACSED_TEAM_ID
+      const scrapedOwned = g.scrapedPlayer?.teamId === teamId
+      if (!rosterOwned && !scrapedOwned) continue
+      const name = g.rosterPlayer?.name
+        ?? (g.scrapedPlayer
+          ? `${g.scrapedPlayer.firstName} ${g.scrapedPlayer.lastName}`.trim()
+          : null)
+      if (!name) continue
       counts.set(name, (counts.get(name) ?? 0) + 1)
       teamTotal++
     }
