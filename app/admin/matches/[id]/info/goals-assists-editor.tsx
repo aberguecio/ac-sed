@@ -1,11 +1,13 @@
 'use client'
 
 import { useState } from 'react'
+import { ACSED_TEAM_NAME, ACSED_TEAM_ID } from '@/lib/team-utils'
 
 interface Goal {
   id: number
   leaguePlayerId: number | null
   rosterPlayerId: number | null
+  minute: number | null
   scrapedPlayer: { id: number; firstName: string; lastName: string; teamId: number | null } | null
   rosterPlayer: { id: number; name: string; number: number | null; photoUrl: string | null; nicknames: string[]; leaguePlayerId: number | null } | null
   assistPlayer: { id: number; firstName: string; lastName: string } | null
@@ -13,6 +15,12 @@ interface Goal {
   assistLeaguePlayerId: number | null
   assistRosterPlayerId: number | null
   teamName: string
+}
+
+function isAcsedGoal(goal: Goal): boolean {
+  if (goal.rosterPlayerId != null) return true
+  if (goal.scrapedPlayer?.teamId === ACSED_TEAM_ID) return true
+  return goal.teamName === ACSED_TEAM_NAME
 }
 
 interface Player {
@@ -46,14 +54,15 @@ function resolveRosterId(
 }
 
 export function GoalsAssistsEditor({ matchId, goals, players }: GoalsAssistsEditorProps) {
+  const acsedGoals = goals.filter(isAcsedGoal)
   const [goalScorers, setGoalScorers] = useState<Map<number, number | null>>(
     new Map(
-      goals.map(g => [g.id, resolveRosterId(g.rosterPlayerId, g.leaguePlayerId, players)])
+      acsedGoals.map(g => [g.id, resolveRosterId(g.rosterPlayerId, g.leaguePlayerId, players)])
     )
   )
   const [goalAssists, setGoalAssists] = useState<Map<number, number | null>>(
     new Map(
-      goals.map(g => [g.id, resolveRosterId(g.assistRosterPlayerId, g.assistLeaguePlayerId, players)])
+      acsedGoals.map(g => [g.id, resolveRosterId(g.assistRosterPlayerId, g.assistLeaguePlayerId, players)])
     )
   )
   const [saving, setSaving] = useState<number | null>(null)
@@ -140,9 +149,34 @@ export function GoalsAssistsEditor({ matchId, goals, players }: GoalsAssistsEdit
   return (
     <div className="space-y-4">
       {goals.map(goal => {
+        const isAcsed = isAcsedGoal(goal)
         const scraperScorer = goal.scrapedPlayer
           ? `${goal.scrapedPlayer.firstName} ${goal.scrapedPlayer.lastName}`
           : '(sin atribución de scraper)'
+        const minuteLabel = goal.minute != null ? `min ${goal.minute}'` : null
+
+        if (!isAcsed) {
+          // Rival goal — read-only for chronological context only.
+          return (
+            <div
+              key={goal.id}
+              className="border border-gray-200 bg-gray-50 rounded-lg p-3 opacity-75"
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-lg">⚽</span>
+                <div className="flex-1">
+                  <div className="text-xs text-gray-500">
+                    {goal.teamName}
+                    {minuteLabel ? ` · ${minuteLabel}` : ''}
+                  </div>
+                  <div className="text-sm text-gray-700">{scraperScorer}</div>
+                </div>
+                <span className="text-xs text-gray-400">🔒 rival</span>
+              </div>
+            </div>
+          )
+        }
+
         const currentScorer = goalScorers.get(goal.id) ?? ''
         const currentAssist = goalAssists.get(goal.id)
         const message = messages.get(goal.id)
@@ -158,7 +192,10 @@ export function GoalsAssistsEditor({ matchId, goals, players }: GoalsAssistsEdit
               <div className="flex items-center gap-2 pb-2 border-b border-gray-100">
                 <span className="text-lg">⚽</span>
                 <div>
-                  <div className="text-xs text-gray-500">{goal.teamName}</div>
+                  <div className="text-xs text-gray-500">
+                    {goal.teamName}
+                    {minuteLabel ? ` · ${minuteLabel}` : ''}
+                  </div>
                   <div className="text-xs text-gray-400">Scraper detectó: {scraperScorer}</div>
                 </div>
               </div>

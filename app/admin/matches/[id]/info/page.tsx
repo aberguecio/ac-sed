@@ -24,9 +24,6 @@ export default async function MatchInfoPage({ params }: PageProps) {
       awayTeam: true,
       stage: true,
       goals: {
-        where: {
-          teamName: ACSED_TEAM_NAME,
-        },
         include: {
           scrapedPlayer: true,
           assistPlayer: true,
@@ -147,7 +144,7 @@ export default async function MatchInfoPage({ params }: PageProps) {
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
           <h2 className="text-lg font-bold text-navy mb-4">Goles y Asistencias</h2>
           <p className="text-sm text-gray-500 mb-4">
-            Asigna asistencias a cada gol. Esta información será usada en noticias y posts de Instagram.
+            Asigna goleador y asistencia a cada gol AC SED. Los goles del rival aparecen bloqueados para tener el contexto cronológico.
           </p>
           <GoalsAssistsEditor matchId={matchId} goals={match.goals} players={players} />
         </div>
