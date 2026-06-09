@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getMatchContext } from '@/lib/ai'
+import { scorerRef } from '@/lib/player-ref'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -27,7 +28,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       matchInfo: `${post.match.homeTeam?.name ?? 'TBD'} ${post.match.homeScore ?? '?'} - ${post.match.awayScore ?? '?'} ${post.match.awayTeam?.name ?? 'TBD'}`,
       goals: context.goals.map((g: any) => ({
         minute: g.minute,
-        player: g.scrapedPlayer ? `${g.scrapedPlayer.firstName} ${g.scrapedPlayer.lastName}` : 'Desconocido',
+        player: scorerRef(g)?.name ?? 'Desconocido',
         team: g.teamName,
       })),
       standings: context.standingsRows.map((s: any) =>

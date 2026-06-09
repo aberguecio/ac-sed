@@ -171,7 +171,7 @@ export async function GET(request: Request) {
         }))
     }
 
-    // Get AC SED assists
+    // Get AC SED assists (roster-only parches counted via assistRosterPlayerId).
     const assistsQuery = await prisma.matchGoal.findMany({
       where: {
         match: {
@@ -184,20 +184,25 @@ export async function GET(request: Request) {
           })
         },
         teamName: ACSED_TEAM_NAME,
-        assistLeaguePlayerId: { not: null }
+        OR: [
+          { assistLeaguePlayerId: { not: null } },
+          { assistRosterPlayerId: { not: null } },
+        ],
       },
       include: {
-        assistPlayer: true
+        assistPlayer: true,
+        assistRosterPlayer: true,
       }
     })
 
-    // Count assists per player
     const assistsMap = new Map<string, number>()
     assistsQuery.forEach((goal) => {
-      if (goal.assistPlayer) {
-        const playerName = `${goal.assistPlayer.firstName} ${goal.assistPlayer.lastName}`
-        assistsMap.set(playerName, (assistsMap.get(playerName) || 0) + 1)
-      }
+      const playerName = goal.assistRosterPlayer?.name
+        ?? (goal.assistPlayer
+          ? `${goal.assistPlayer.firstName} ${goal.assistPlayer.lastName}`
+          : null)
+      if (!playerName) return
+      assistsMap.set(playerName, (assistsMap.get(playerName) || 0) + 1)
     })
 
     const teamAssists = Array.from(assistsMap.entries())

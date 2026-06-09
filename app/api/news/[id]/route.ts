@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getMatchContext } from '@/lib/ai'
+import { scorerRef, cardPlayerRef } from '@/lib/player-ref'
 import { notifyNewsPublished } from '@/lib/whatsapp-notifier'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -41,7 +42,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       goalsCount: context.goals.length,
       goals: context.goals.map((g: any) => ({
         minute: g.minute,
-        player: g.scrapedPlayer ? `${g.scrapedPlayer.firstName} ${g.scrapedPlayer.lastName}` : 'Desconocido',
+        player: scorerRef(g)?.name ?? 'Desconocido',
         team: g.teamName,
       })),
 
@@ -50,7 +51,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       cards: context.cards.map((c: any) => ({
         minute: c.minute,
         type: c.cardType,
-        player: c.scrapedPlayer ? `${c.scrapedPlayer.firstName} ${c.scrapedPlayer.lastName}` : 'Desconocido',
+        player: cardPlayerRef(c)?.name ?? 'Desconocido',
         team: c.teamName,
       })),
 
