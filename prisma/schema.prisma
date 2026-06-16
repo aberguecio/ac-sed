@@ -481,6 +481,19 @@ model BotConfig {
   updatedAt  DateTime @updatedAt
 }
 
+// Singleton holding the live Instagram long-lived access token. Stored in DB
+// (not just the env var) so the `refresh-ig-token` cron can rewrite it before
+// its 60-day expiry without redeploying. `getInstagramToken()` reads here
+// first and falls back to INSTAGRAM_ACCESS_TOKEN.
+model InstagramConfig {
+  id               Int       @id @default(1)
+  accessToken      String?   @db.Text
+  tokenExpiresAt   DateTime? // when the current token stops working (~60d out)
+  lastRefreshAt    DateTime?
+  lastRefreshError String?   @db.Text
+  updatedAt        DateTime  @updatedAt
+}
+
 // Configurable cron jobs. Each row is a job definition keyed by `key`
 // (matched against a code-side handler registry). Schedule + enabled flag
 // are editable from the admin UI; the action is hardcoded per key.

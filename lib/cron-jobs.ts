@@ -6,6 +6,7 @@ import { ACSED_TEAM_ID } from '@/lib/team-utils'
 import { pickRandomBackgrounds } from '@/lib/instagram-backgrounds'
 import { attachComposedImage } from '@/lib/ig-image-pipeline'
 import { findNextAcsedMatch, runAttendanceBroadcast } from '@/lib/attendance'
+import { refreshInstagramToken } from '@/lib/instagram-config'
 import type { CronJob } from '@prisma/client'
 
 export type JobStatus = 'success' | 'noop' | 'error'
@@ -193,10 +194,25 @@ const handleSaturdayAttendance: JobHandler = async () => {
   }
 }
 
+const handleRefreshIgToken: JobHandler = async () => {
+  const result = await refreshInstagramToken()
+  if (result.ok) {
+    return {
+      status: 'success',
+      message: `token renovado, vence ${result.expiresAt.toISOString().slice(0, 10)}`,
+    }
+  }
+  if (result.reason === 'no-token') {
+    return { status: 'noop', message: 'sin token de Instagram configurado' }
+  }
+  return { status: 'error', message: result.message }
+}
+
 export const JOB_REGISTRY: Record<string, JobHandler> = {
   'weekly-result': handleWeeklyResult,
   'monday-promo': handleMondayPromo,
   'saturday-attendance': handleSaturdayAttendance,
+  'refresh-ig-token': handleRefreshIgToken,
 }
 
 export const DEFAULT_JOBS: Array<Pick<CronJob, 'key' | 'name' | 'schedule' | 'timezone'>> = [
@@ -216,6 +232,15 @@ export const DEFAULT_JOBS: Array<Pick<CronJob, 'key' | 'name' | 'schedule' | 'ti
     key: 'saturday-attendance',
     name: 'Encuesta de asistencia (sábado)',
     schedule: '0 12 * * 6',
+    timezone: 'America/Santiago',
+  },
+  {
+    // Long-lived IG tokens expire after 60 days. Refreshing weekly keeps the
+    // token's expiry continuously ~60 days out, with wide margin if a run is
+    // missed. The refresh needs a still-valid, >24h-old token.
+    key: 'refresh-ig-token',
+    name: 'Renovar token de Instagram (lunes)',
+    schedule: '0 4 * * 1',
     timezone: 'America/Santiago',
   },
 ]

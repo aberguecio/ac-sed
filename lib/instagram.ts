@@ -1,11 +1,7 @@
+import { getInstagramToken } from '@/lib/instagram-config'
+
 const IG_USER_ID = process.env.INSTAGRAM_USER_ID ?? '26782910464676207'
 const IG_API_BASE = 'https://graph.instagram.com/v21.0'
-
-function getToken(): string {
-  const token = process.env.INSTAGRAM_ACCESS_TOKEN
-  if (!token) throw new Error('INSTAGRAM_ACCESS_TOKEN not configured')
-  return token
-}
 
 async function igFetch(path: string, options?: RequestInit) {
   const url = `${IG_API_BASE}${path}`
@@ -26,7 +22,7 @@ export async function getAccountInfo(): Promise<{
   accountType: string
 }> {
   const data = await igFetch(
-    `/me?fields=id,username,media_count,account_type&access_token=${getToken()}`
+    `/me?fields=id,username,media_count,account_type&access_token=${await getInstagramToken()}`
   )
   return {
     id: data.id,
@@ -45,7 +41,7 @@ export async function createSinglePostContainer(
   const params = new URLSearchParams({
     image_url: imageUrl,
     caption,
-    access_token: getToken(),
+    access_token: await getInstagramToken(),
   })
   const data = await igFetch(`/${IG_USER_ID}/media`, {
     method: 'POST',
@@ -60,7 +56,7 @@ export async function createCarouselItemContainer(imageUrl: string): Promise<str
   const params = new URLSearchParams({
     image_url: imageUrl,
     is_carousel_item: 'true',
-    access_token: getToken(),
+    access_token: await getInstagramToken(),
   })
   const data = await igFetch(`/${IG_USER_ID}/media`, {
     method: 'POST',
@@ -77,7 +73,7 @@ export async function createCarouselContainer(
     media_type: 'CAROUSEL',
     children: childIds.join(','),
     caption,
-    access_token: getToken(),
+    access_token: await getInstagramToken(),
   })
   const data = await igFetch(`/${IG_USER_ID}/media`, {
     method: 'POST',
@@ -91,7 +87,7 @@ export async function createCarouselContainer(
 async function waitForContainer(containerId: string, maxAttempts = 30): Promise<void> {
   for (let i = 0; i < maxAttempts; i++) {
     const data = await igFetch(
-      `/${containerId}?fields=status_code,status&access_token=${getToken()}`
+      `/${containerId}?fields=status_code,status&access_token=${await getInstagramToken()}`
     )
     if (data.status_code === 'FINISHED') return
     if (data.status_code === 'ERROR') {
@@ -107,7 +103,7 @@ export async function publishMedia(creationId: string): Promise<string> {
   await waitForContainer(creationId)
   const params = new URLSearchParams({
     creation_id: creationId,
-    access_token: getToken(),
+    access_token: await getInstagramToken(),
   })
   const data = await igFetch(`/${IG_USER_ID}/media_publish`, {
     method: 'POST',
@@ -118,7 +114,7 @@ export async function publishMedia(creationId: string): Promise<string> {
 
 export async function getMediaPermalink(mediaId: string): Promise<string | null> {
   try {
-    const data = await igFetch(`/${mediaId}?fields=permalink&access_token=${getToken()}`)
+    const data = await igFetch(`/${mediaId}?fields=permalink&access_token=${await getInstagramToken()}`)
     return typeof data.permalink === 'string' ? data.permalink : null
   } catch {
     return null

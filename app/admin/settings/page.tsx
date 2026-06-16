@@ -1,13 +1,32 @@
 import { getBotConfig } from '@/lib/bot-config'
+import { getInstagramConfig } from '@/lib/instagram-config'
 import { BotDmToggle } from './bot-dm-toggle'
+import { InstagramTokenForm } from './instagram-token-form'
 
 export const dynamic = 'force-dynamic'
+
+function maskToken(token: string | null): string | null {
+  if (!token) return null
+  if (token.length <= 10) return '••••'
+  return `${token.slice(0, 4)}…${token.slice(-4)}`
+}
 
 export default async function AdminSettingsPage() {
   const provider = process.env.AI_PROVIDER ?? 'openai'
   const model = process.env.AI_MODEL ?? '(default)'
   const hasKey = !!(process.env.AI_API_KEY?.length)
   const botConfig = await getBotConfig()
+
+  const igCfg = await getInstagramConfig()
+  const igEffective = igCfg.accessToken ?? process.env.INSTAGRAM_ACCESS_TOKEN ?? null
+  const igStatus = {
+    configured: !!igEffective,
+    source: (igCfg.accessToken ? 'db' : igEffective ? 'env' : 'none') as 'db' | 'env' | 'none',
+    tokenPreview: maskToken(igEffective),
+    tokenExpiresAt: igCfg.tokenExpiresAt?.toISOString() ?? null,
+    lastRefreshAt: igCfg.lastRefreshAt?.toISOString() ?? null,
+    lastRefreshError: igCfg.lastRefreshError,
+  }
 
   return (
     <div className="p-8 space-y-8">
@@ -22,6 +41,11 @@ export default async function AdminSettingsPage() {
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 max-w-lg">
         <h2 className="font-bold text-navy mb-4">Bot de WhatsApp</h2>
         <BotDmToggle initial={botConfig.aiAllowDms} />
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 max-w-lg">
+        <h2 className="font-bold text-navy mb-4">Instagram</h2>
+        <InstagramTokenForm initial={igStatus} />
       </div>
 
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 max-w-lg space-y-4">
