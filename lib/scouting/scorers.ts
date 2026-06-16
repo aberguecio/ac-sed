@@ -43,6 +43,7 @@ async function teamScorers(
       goals: {
         select: {
           rosterPlayerId: true,
+          leaguePlayerId: true,
           scrapedPlayer: { select: { firstName: true, lastName: true, teamId: true } },
           rosterPlayer: { select: { name: true } },
         },
@@ -50,25 +51,54 @@ async function teamScorers(
     },
   })
 
-  const counts = new Map<string, number>()
+  // Resolve linked Liga B ids to their roster player so a linked AC SED player
+  // is counted once (roster name), even on goals that only carry leaguePlayerId.
+  const linkedRoster = await prisma.player.findMany({
+    where: { leaguePlayerId: { not: null } },
+    select: { id: true, name: true, leaguePlayerId: true },
+  })
+  const rosterByLeagueId = new Map<number, { id: number; name: string }>(
+    linkedRoster.map((p) => [p.leaguePlayerId!, { id: p.id, name: p.name }]),
+  )
+
+  const counts = new Map<string, { playerName: string; goals: number }>()
   let teamTotal = 0
   for (const m of matches) {
     for (const g of m.goals) {
-      const rosterOwned = g.rosterPlayerId != null && teamId === ACSED_TEAM_ID
+      let rosterId = g.rosterPlayerId
+      let rosterName = g.rosterPlayer?.name ?? null
+      if (rosterId == null && g.leaguePlayerId != null) {
+        const linked = rosterByLeagueId.get(g.leaguePlayerId)
+        if (linked) {
+          rosterId = linked.id
+          rosterName = linked.name
+        }
+      }
+
+      const rosterOwned = rosterId != null && teamId === ACSED_TEAM_ID
       const scrapedOwned = g.scrapedPlayer?.teamId === teamId
       if (!rosterOwned && !scrapedOwned) continue
-      const name = g.rosterPlayer?.name
+
+      const name = rosterName
         ?? (g.scrapedPlayer
           ? `${g.scrapedPlayer.firstName} ${g.scrapedPlayer.lastName}`.trim()
           : null)
       if (!name) continue
-      counts.set(name, (counts.get(name) ?? 0) + 1)
+
+      const identity = rosterId != null
+        ? `r:${rosterId}`
+        : g.leaguePlayerId != null
+          ? `l:${g.leaguePlayerId}`
+          : `n:${name}`
+      const entry = counts.get(identity) ?? { playerName: name, goals: 0 }
+      entry.goals++
+      counts.set(identity, entry)
       teamTotal++
     }
   }
 
-  const arr: TopScorer[] = Array.from(counts.entries())
-    .map(([playerName, goals]) => ({
+  const arr: TopScorer[] = Array.from(counts.values())
+    .map(({ playerName, goals }) => ({
       playerName,
       goals,
       share: teamTotal > 0 ? goals / teamTotal : 0,
@@ -79,7 +109,7 @@ async function teamScorers(
   // Herfindahl–Hirschman index: sum of squared shares across all scorers.
   let hhi = 0
   if (teamTotal > 0) {
-    for (const goals of counts.values()) {
+    for (const { goals } of counts.values()) {
       const s = goals / teamTotal
       hhi += s * s
     }

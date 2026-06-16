@@ -177,6 +177,19 @@ export async function calculateScorersUpToDate(
     },
   })
 
+  // Map each linked ScrapedPlayer (Liga B id) to its roster Player. The
+  // scraper re-creates goals with only `leaguePlayerId` on every run, so a
+  // linked player ends up with some goals carrying `rosterPlayerId` and some
+  // not. Resolving the league id back to the roster player here collapses
+  // both into one row instead of duplicating the scorer.
+  const linkedRoster = await prisma.player.findMany({
+    where: { leaguePlayerId: { not: null } },
+    select: { id: true, name: true, leaguePlayerId: true },
+  })
+  const rosterByLeagueId = new Map<number, { id: number; name: string }>(
+    linkedRoster.map(p => [p.leaguePlayerId!, { id: p.id, name: p.name }]),
+  )
+
   // Aggregate goals by player. Use a stable per-player key so a goal linked
   // to both a roster Player and a ScrapedPlayer doesn't double-count under
   // two different names.
@@ -186,15 +199,28 @@ export async function calculateScorersUpToDate(
     const ref = scorerRef(goal)
     if (!ref) continue
     const teamName = goal.teamName
-    const identity = ref.rosterPlayerId != null
-      ? `r:${ref.rosterPlayerId}`
+
+    // Canonicalize to the roster player when this league id is linked, even
+    // if this particular goal row never got `rosterPlayerId` backfilled.
+    let rosterId = ref.rosterPlayerId
+    let name = ref.name
+    if (rosterId == null && ref.leaguePlayerId != null) {
+      const linked = rosterByLeagueId.get(ref.leaguePlayerId)
+      if (linked) {
+        rosterId = linked.id
+        name = linked.name
+      }
+    }
+
+    const identity = rosterId != null
+      ? `r:${rosterId}`
       : ref.leaguePlayerId != null
         ? `l:${ref.leaguePlayerId}`
-        : `n:${ref.name}`
+        : `n:${name}`
     const key = `${identity}::${teamName}`
 
     if (!playerGoals.has(key)) {
-      playerGoals.set(key, { playerName: ref.name, teamName, goals: 0 })
+      playerGoals.set(key, { playerName: name, teamName, goals: 0 })
     }
 
     playerGoals.get(key)!.goals++

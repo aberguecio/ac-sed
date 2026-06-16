@@ -195,18 +195,44 @@ export async function GET(request: Request) {
       }
     })
 
-    const assistsMap = new Map<string, number>()
+    // Resolve linked Liga B ids to their roster player so assists from
+    // re-scraped goals (assistLeaguePlayerId only) collapse into the same row
+    // as manually-linked ones (assistRosterPlayerId), instead of duplicating.
+    const linkedRoster = await prisma.player.findMany({
+      where: { leaguePlayerId: { not: null } },
+      select: { id: true, name: true, leaguePlayerId: true },
+    })
+    const rosterByLeagueId = new Map<number, { id: number; name: string }>(
+      linkedRoster.map((p) => [p.leaguePlayerId!, { id: p.id, name: p.name }]),
+    )
+
+    const assistsMap = new Map<string, { playerName: string; assists: number }>()
     assistsQuery.forEach((goal) => {
-      const playerName = goal.assistRosterPlayer?.name
-        ?? (goal.assistPlayer
-          ? `${goal.assistPlayer.firstName} ${goal.assistPlayer.lastName}`
-          : null)
+      let rosterId = goal.assistRosterPlayerId
+      let playerName = goal.assistRosterPlayer?.name ?? null
+      if (rosterId == null && goal.assistLeaguePlayerId != null) {
+        const linked = rosterByLeagueId.get(goal.assistLeaguePlayerId)
+        if (linked) {
+          rosterId = linked.id
+          playerName = linked.name
+        }
+      }
+      if (!playerName && goal.assistPlayer) {
+        playerName = `${goal.assistPlayer.firstName} ${goal.assistPlayer.lastName}`
+      }
       if (!playerName) return
-      assistsMap.set(playerName, (assistsMap.get(playerName) || 0) + 1)
+
+      const identity = rosterId != null
+        ? `r:${rosterId}`
+        : goal.assistLeaguePlayerId != null
+          ? `l:${goal.assistLeaguePlayerId}`
+          : `n:${playerName}`
+      const entry = assistsMap.get(identity) ?? { playerName, assists: 0 }
+      entry.assists++
+      assistsMap.set(identity, entry)
     })
 
-    const teamAssists = Array.from(assistsMap.entries())
-      .map(([playerName, assists]) => ({ playerName, assists }))
+    const teamAssists = Array.from(assistsMap.values())
       .sort((a, b) => b.assists - a.assists)
 
     // Format standings for frontend (add team relation)

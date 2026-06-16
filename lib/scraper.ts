@@ -134,6 +134,17 @@ async function saveMatchEvents(matchId: number, leagueMatchId: number) {
     await prisma.matchGoal.deleteMany({ where: { matchId } })
     await prisma.matchCard.deleteMany({ where: { matchId } })
 
+    // Map Liga B player ids to linked roster players so re-created goals/cards
+    // keep their `rosterPlayerId`. Without this, every re-scrape would drop the
+    // link and the stats page would show the player twice (roster vs scraped).
+    const linkedRoster = await prisma.player.findMany({
+      where: { leaguePlayerId: { not: null } },
+      select: { id: true, leaguePlayerId: true },
+    })
+    const rosterByLeagueId = new Map<number, number>(
+      linkedRoster.map(p => [p.leaguePlayerId!, p.id]),
+    )
+
     for (const event of events) {
       const playerId = event.playerId
       const teamName = event.team?.name || 'Unknown'
@@ -178,6 +189,7 @@ async function saveMatchEvents(matchId: number, leagueMatchId: number) {
           data: {
             matchId,
             leaguePlayerId: playerId,
+            rosterPlayerId: rosterByLeagueId.get(playerId) ?? null,
             teamName,
             minute: null, // API doesn't provide minute
           }
@@ -190,6 +202,7 @@ async function saveMatchEvents(matchId: number, leagueMatchId: number) {
           data: {
             matchId,
             leaguePlayerId: playerId,
+            rosterPlayerId: rosterByLeagueId.get(playerId) ?? null,
             cardType,
             teamName,
             minute: null,
