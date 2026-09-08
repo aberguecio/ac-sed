@@ -158,8 +158,8 @@ export default async function HomePage() {
               <div className="grid grid-cols-3 gap-2 md:gap-4">
                 {[
                   {
-                    label: "Partidos jugados",
-                    value: allTimeTotals.played,
+                    label: "Rendimiento",
+                    value: `${allTimeTotals.performance}%`,
                     color: "text-wheat",
                   },
                   {
@@ -168,8 +168,11 @@ export default async function HomePage() {
                     color: "text-green-400",
                   },
                   {
-                    label: "Goles",
-                    value: allTimeTotals.goalsFor,
+                    label: "Diferencia de gol",
+                    value:
+                      allTimeTotals.goalDifference > 0
+                        ? `+${allTimeTotals.goalDifference}`
+                        : allTimeTotals.goalDifference,
                     color: "text-blue-400",
                   },
                 ].map(({ label, value, color }) => (

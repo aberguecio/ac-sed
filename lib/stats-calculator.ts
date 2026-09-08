@@ -236,7 +236,12 @@ export async function calculateScorersUpToDate(
 export interface AllTimeTotals {
   played: number
   won: number
+  drawn: number
   goalsFor: number
+  goalsAgainst: number
+  goalDifference: number
+  /** Points won over points available, as a percentage (3 per match). */
+  performance: number
 }
 
 /**
@@ -260,18 +265,31 @@ export async function calculateAllTimeTotals(
     },
   })
 
-  return matches.reduce<AllTimeTotals>(
-    (totals, match) => {
+  const totals = matches.reduce(
+    (acc, match) => {
       const isHome = match.homeTeam?.name === teamName
       const goalsFor = isHome ? match.homeScore! : match.awayScore!
       const goalsAgainst = isHome ? match.awayScore! : match.homeScore!
 
       return {
-        played: totals.played + 1,
-        won: totals.won + (goalsFor > goalsAgainst ? 1 : 0),
-        goalsFor: totals.goalsFor + goalsFor,
+        played: acc.played + 1,
+        won: acc.won + (goalsFor > goalsAgainst ? 1 : 0),
+        drawn: acc.drawn + (goalsFor === goalsAgainst ? 1 : 0),
+        goalsFor: acc.goalsFor + goalsFor,
+        goalsAgainst: acc.goalsAgainst + goalsAgainst,
       }
     },
-    { played: 0, won: 0, goalsFor: 0 }
+    { played: 0, won: 0, drawn: 0, goalsFor: 0, goalsAgainst: 0 }
   )
+
+  const pointsAvailable = totals.played * 3
+
+  return {
+    ...totals,
+    goalDifference: totals.goalsFor - totals.goalsAgainst,
+    performance:
+      pointsAvailable === 0
+        ? 0
+        : Math.round(((totals.won * 3 + totals.drawn) / pointsAvailable) * 100),
+  }
 }
