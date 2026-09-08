@@ -2,6 +2,7 @@ import slugify from 'slugify'
 import { prisma } from '@/lib/db'
 import { runScraper } from '@/lib/scraper'
 import { matchesWithNewResult } from '@/lib/match-changes'
+import { findDuplicateMatchGroups, summarizeAttachments } from '@/lib/match-consolidation'
 import { generateMatchNews, generateInstagramCaption } from '@/lib/ai'
 import { ACSED_TEAM_ID } from '@/lib/team-utils'
 import { pickRandomBackgrounds } from '@/lib/instagram-backgrounds'
@@ -222,11 +223,51 @@ const handleRefreshIgToken: JobHandler = async () => {
   return { status: 'error', message: result.message }
 }
 
+/**
+ * The scraper only visits the active tournament, so a duplicate left behind by
+ * a fixture republication is never looked at again — that is why 45 orphan
+ * rows sat unnoticed for three days until a human spotted the votes on the
+ * wrong copy. The unique index on the natural key makes new ones impossible,
+ * but an index only refuses writes; nothing would tell us if duplicates
+ * appeared by some other route (a restore, a manual insert, a schema rollback).
+ *
+ * Reports as `error` when it finds something, so the admin cron panel shows it
+ * in red instead of it needing to be noticed.
+ */
+const handleDuplicateMatchesCheck: JobHandler = async () => {
+  const groups = await findDuplicateMatchGroups()
+
+  if (groups.length === 0) {
+    return { status: 'noop', message: 'sin partidos duplicados' }
+  }
+
+  const attachments = await summarizeAttachments(groups.flatMap(g => g.matches.map(m => m.id)))
+  const detail = groups
+    .slice(0, 5)
+    .map(({ matches }) => {
+      const ids = matches.map(m => m.id).join('/')
+      const answered = matches.reduce(
+        (acc, m) => acc + (attachments.get(m.id)?.answeredAttendance ?? 0),
+        0,
+      )
+      return answered > 0 ? `${ids} (${answered} votos)` : ids
+    })
+    .join(', ')
+
+  const extra = groups.length > 5 ? ` y ${groups.length - 5} más` : ''
+
+  return {
+    status: 'error',
+    message: `${groups.length} grupo(s) de partidos duplicados: ${detail}${extra}. Consolidar en /api/admin/matches/duplicates`,
+  }
+}
+
 export const JOB_REGISTRY: Record<string, JobHandler> = {
   'weekly-result': handleWeeklyResult,
   'monday-promo': handleMondayPromo,
   'saturday-attendance': handleSaturdayAttendance,
   'refresh-ig-token': handleRefreshIgToken,
+  'duplicate-matches-check': handleDuplicateMatchesCheck,
 }
 
 export const DEFAULT_JOBS: Array<Pick<CronJob, 'key' | 'name' | 'schedule' | 'timezone'>> = [
@@ -255,6 +296,15 @@ export const DEFAULT_JOBS: Array<Pick<CronJob, 'key' | 'name' | 'schedule' | 'ti
     key: 'refresh-ig-token',
     name: 'Renovar token de Instagram (lunes)',
     schedule: '0 4 * * 1',
+    timezone: 'America/Santiago',
+  },
+  {
+    // Detection, not repair: consolidating is a human decision, so this only
+    // reports. Weekly is enough — the unique index already blocks the way
+    // duplicates used to appear.
+    key: 'duplicate-matches-check',
+    name: 'Chequeo de partidos duplicados (lunes)',
+    schedule: '0 5 * * 1',
     timezone: 'America/Santiago',
   },
 ]
