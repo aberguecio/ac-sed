@@ -1,6 +1,7 @@
 import slugify from 'slugify'
 import { prisma } from '@/lib/db'
 import { runScraper } from '@/lib/scraper'
+import { matchesWithNewResult } from '@/lib/match-changes'
 import { generateMatchNews, generateInstagramCaption } from '@/lib/ai'
 import { ACSED_TEAM_ID } from '@/lib/team-utils'
 import { pickRandomBackgrounds } from '@/lib/instagram-backgrounds'
@@ -107,34 +108,32 @@ async function processResultMatch(matchId: number) {
 }
 
 const handleWeeklyResult: JobHandler = async () => {
-  const { newMatches } = await runScraper('scheduler')
+  const { changes } = await runScraper('scheduler')
 
-  // Only matches that were actually played: `newMatches` also carries rows
-  // that merely appeared in the fixture, and generating a chronicle for one
-  // of those invents a scoreline. The manual route already filtered this way
-  // (`app/api/scrape/route.ts`); the rule was missing here, which is how four
-  // fixture republications produced 20 news articles about matches nobody had
-  // played yet.
-  const playedMatches = newMatches.filter(m => m.homeScore !== null && m.awayScore !== null)
+  // Only the matches whose result actually landed. Taking this from the typed
+  // change set rather than filtering a mixed bag is the point: a match that
+  // merely appeared in the fixture cannot reach the chronicle generator, so
+  // the run of 20 news articles about unplayed matches cannot repeat.
+  const scoredMatches = matchesWithNewResult(changes)
 
-  if (playedMatches.length === 0) {
+  if (scoredMatches.length === 0) {
     return {
       status: 'noop',
       message:
-        newMatches.length > 0
-          ? `${newMatches.length} partido(s) nuevo(s), ninguno jugado todavía`
+        changes.length > 0
+          ? `${changes.length} cambio(s) en el fixture, ningún resultado nuevo`
           : 'sin partido nuevo',
       clearRetry: true,
     }
   }
 
-  for (const match of playedMatches) {
+  for (const match of scoredMatches) {
     await processResultMatch(match.id)
   }
 
   return {
     status: 'success',
-    message: `procesados ${playedMatches.length} partido(s)`,
+    message: `procesados ${scoredMatches.length} partido(s)`,
     clearRetry: true,
   }
 }

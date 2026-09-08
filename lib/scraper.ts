@@ -1,6 +1,12 @@
 import { prisma } from './db'
 import type { Match, Prisma } from '@prisma/client'
 import { resolveFixtureMatch, type MatchNaturalKey } from './match-consolidation'
+import {
+  matchesWithNewResult,
+  newOrScoredMatches,
+  summarizeChanges,
+  type MatchChange,
+} from './match-changes'
 
 const ACSED_TEAM_ID = 2836 // AC SED team ID
 const ACSED_TEAM_NAME = 'AC Sed'
@@ -507,7 +513,10 @@ interface StageStats {
   unchangedMatches: number
 }
 
-async function processSingleStage(tournamentId: number, stageId: number): Promise<{ matches: Match[], stats: StageStats }> {
+async function processSingleStage(
+  tournamentId: number,
+  stageId: number,
+): Promise<{ changes: MatchChange[]; stats: StageStats }> {
   const stats: StageStats = {
     groupsFound: 0,
     teamsProcessed: 0,
@@ -544,7 +553,7 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
 
   if (!acsedGroupId) {
     console.log(`⚠️  AC SED not found in any group for stage ${stageId}, skipping...`)
-    return { matches: [], stats }
+    return { changes: [], stats }
   }
 
   // Save the group
@@ -688,11 +697,13 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
 
   // Process matches from all match days
   console.log('💾 Processing matches...')
-  const newMatches: Match[] = []
+  // Only AC SED matches are reported: nothing downstream acts on another
+  // team's fixture.
+  const changes: MatchChange[] = []
 
   if (!Array.isArray(matchDays)) {
     console.log('  No match days found')
-    return { matches: newMatches, stats }
+    return { changes, stats }
   }
 
   // Every league id present in this fixture. Rows carrying one of these are
@@ -765,11 +776,13 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
       let savedMatch: any
       let wasResultUpdated = false
 
+      const isAcsedMatch = homeTeamId === ACSED_TEAM_ID || awayTeamId === ACSED_TEAM_ID
+
       if (!existing) {
         savedMatch = await prisma.match.create({ data: matchData })
         stats.newMatches++
-        if (homeTeamId === ACSED_TEAM_ID || awayTeamId === ACSED_TEAM_ID) {
-          newMatches.push(savedMatch)
+        if (isAcsedMatch) {
+          changes.push({ kind: 'created', match: savedMatch })
         }
       } else {
         savedMatch = existing
@@ -785,19 +798,20 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
         // added later" case.
         const dateChanged = existing.date.getTime() !== matchDate.getTime()
 
-        if (
-          existing.homeScore !== match.homeScore ||
-          existing.awayScore !== match.awayScore ||
-          existing.homeTeamId !== homeTeamId ||
-          existing.awayTeamId !== awayTeamId ||
-          existing.venue !== (match.grounds || null) ||
-          // `roundName` and `groupId` were built into `matchData` but never
-          // compared nor written, so a match moved to another group — or a
-          // renamed round — was created once and then never corrected.
-          existing.roundName !== matchData.roundName ||
-          existing.groupId !== matchData.groupId ||
-          dateChanged
-        ) {
+        // `roundName` and `groupId` were built into `matchData` but never
+        // compared nor written, so a match moved to another group — or a
+        // renamed round — was created once and then never corrected.
+        const changedFields: string[] = []
+        if (existing.homeScore !== match.homeScore) changedFields.push('homeScore')
+        if (existing.awayScore !== match.awayScore) changedFields.push('awayScore')
+        if (existing.homeTeamId !== homeTeamId) changedFields.push('homeTeamId')
+        if (existing.awayTeamId !== awayTeamId) changedFields.push('awayTeamId')
+        if (existing.venue !== (match.grounds || null)) changedFields.push('venue')
+        if (existing.roundName !== matchData.roundName) changedFields.push('roundName')
+        if (existing.groupId !== matchData.groupId) changedFields.push('groupId')
+        if (dateChanged) changedFields.push('date')
+
+        if (changedFields.length > 0) {
           savedMatch = await prisma.match.update({
             // Keyed by `id`, not `leagueMatchId`: after adopting a republished
             // fixture the league id has just changed under us.
@@ -816,9 +830,25 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
 
           stats.updatedMatches++
 
-          // If this AC SED match just got a result, add to newMatches for news generation
-          if (wasResultUpdated && (homeTeamId === ACSED_TEAM_ID || awayTeamId === ACSED_TEAM_ID)) {
-            newMatches.push(savedMatch)
+          if (isAcsedMatch) {
+            // The result landing is what content hangs off, so it wins over a
+            // reschedule that arrived in the same payload.
+            if (wasResultUpdated) {
+              changes.push({
+                kind: 'result-arrived',
+                match: savedMatch,
+                score: { home: match.homeScore, away: match.awayScore },
+              })
+            } else if (dateChanged) {
+              changes.push({
+                kind: 'rescheduled',
+                match: savedMatch,
+                from: existing.date,
+                to: matchDate,
+              })
+            } else {
+              changes.push({ kind: 'updated', match: savedMatch, fields: changedFields })
+            }
           }
         } else {
           stats.unchangedMatches++
@@ -836,14 +866,22 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
   console.log(
     `  Stats: ${stats.newMatches} new, ${stats.updatedMatches} updated, ${stats.unchangedMatches} unchanged`,
   )
+  console.log(`  AC SED changes: ${summarizeChanges(changes)}`)
 
-  return { matches: newMatches, stats }
+  return { changes, stats }
 }
 
 export async function runScraper(
   triggeredBy: 'manual' | 'scheduler',
   options?: { tournamentId?: number; stageId?: number }
 ): Promise<{
+  /** Everything the scrape observed about AC SED matches, case by case. */
+  changes: MatchChange[]
+  /**
+   * Matches created or newly scored. Kept because callers still want the
+   * union; anything that generates content must go through
+   * `matchesWithNewResult` instead.
+   */
   newMatches: Match[]
   logId: number
 }> {
@@ -913,7 +951,7 @@ export async function runScraper(
       tournamentId = activeTournament.id
     }
 
-    const allNewMatches: Match[] = []
+    const allChanges: MatchChange[] = []
     let totalMatchesFound = 0
     let totalNewMatches = 0
     let totalUpdatedMatches = 0
@@ -930,7 +968,7 @@ export async function runScraper(
     for (const stageId of stagesToProcess) {
       console.log(`\n🔄 Processing stage ${stageId}...`)
       const result = await processSingleStage(tournamentId, stageId)
-      allNewMatches.push(...result.matches)
+      allChanges.push(...result.changes)
       totalMatchesFound += result.stats.matchesFound
       totalNewMatches += result.stats.newMatches
       totalUpdatedMatches += result.stats.updatedMatches
@@ -940,10 +978,12 @@ export async function runScraper(
       totalGroupsFound += result.stats.groupsFound
     }
 
+    const scoredMatches = matchesWithNewResult(allChanges)
+
     console.log(
       `✅ Scraper completed! ${totalMatchesFound} fixture entries seen, ` +
-        `${totalNewMatches} created, ${totalUpdatedMatches} written, ${totalUnchangedMatches} unchanged, ` +
-        `${allNewMatches.length} new AC SED matches for content`,
+        `${totalNewMatches} created, ${totalUpdatedMatches} written, ${totalUnchangedMatches} unchanged — ` +
+        `AC SED: ${summarizeChanges(allChanges)}`,
     )
 
     await prisma.scrapeLog.update({
@@ -970,7 +1010,10 @@ export async function runScraper(
     // the public stats page. The auto-generated news stays as a draft and
     // its own publish notification fires separately when the admin
     // publishes it.
-    if (allNewMatches.length > 0) {
+    //
+    // This used to fire on a plain `created` too, so the group was told the
+    // standings had changed when all that happened was a fixture appearing.
+    if (scoredMatches.length > 0) {
       try {
         const { notifyStandingsUpdated } = await import('@/lib/whatsapp-notifier')
         await notifyStandingsUpdated()
@@ -979,7 +1022,7 @@ export async function runScraper(
       }
     }
 
-    return { newMatches: allNewMatches, logId: log.id }
+    return { changes: allChanges, newMatches: newOrScoredMatches(allChanges), logId: log.id }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     await prisma.scrapeLog.update({
