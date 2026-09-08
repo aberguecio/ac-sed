@@ -1,5 +1,6 @@
 import { prisma } from './db'
 import type { Match } from '@prisma/client'
+import { resolveFixtureMatch, type MatchNaturalKey } from './match-consolidation'
 
 const ACSED_TEAM_ID = 2836 // AC SED team ID
 const ACSED_TEAM_NAME = 'AC Sed'
@@ -446,6 +447,13 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
     return { matches: newMatches, stats }
   }
 
+  // Every league id present in this fixture. Rows carrying one of these are
+  // live matches, not leftovers of an earlier publication — see
+  // `resolveFixtureMatch`.
+  const liveLeagueMatchIds = new Set<string>(
+    matchDays.flatMap((day: any) => (day.matches || []).map((m: any) => String(m.id))),
+  )
+
   let totalMatches = 0
   for (const matchDay of matchDays) {
     const matches = matchDay.matches || []
@@ -490,60 +498,75 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
         leagueMatchId: matchId,
       }
 
-    const existing = await prisma.match.findUnique({
-      where: { leagueMatchId: matchId },
-    })
+      // A missing `leagueMatchId` does not mean a new match: the league
+      // republishes fixtures with fresh ids, and the row it left behind still
+      // holds the attendance votes, the Instagram promo and the news. Adopt it
+      // (folding in any other stray copy) instead of creating a duplicate.
+      const naturalKey: MatchNaturalKey | null =
+        homeTeamId && awayTeamId && matchData.groupId
+          ? {
+              tournamentId,
+              stageId,
+              groupId: matchData.groupId,
+              homeTeamId,
+              awayTeamId,
+            }
+          : null
 
-    let savedMatch: any
-    let wasResultUpdated = false
+      const { match: existing } = await resolveFixtureMatch(matchId, naturalKey, liveLeagueMatchIds)
 
-    if (!existing) {
-      savedMatch = await prisma.match.create({ data: matchData })
-      stats.newMatches++
-      if (homeTeamId === ACSED_TEAM_ID || awayTeamId === ACSED_TEAM_ID) {
-        newMatches.push(savedMatch)
-      }
-    } else {
-      savedMatch = existing
-      stats.updatedMatches++
+      let savedMatch: any
+      let wasResultUpdated = false
 
-      // Check if this is a result update (match went from no result to having result)
-      const hadNoResult = existing.homeScore === null && existing.awayScore === null
-      const nowHasResult = match.homeScore !== null && match.awayScore !== null
-      wasResultUpdated = hadNoResult && nowHasResult
-
-      // Compare dates by timestamp — `Date !== Date` is always true by
-      // reference, so we have to .getTime() both sides. This is what
-      // catches the "match was created with no time and the schedule got
-      // added later" case.
-      const dateChanged = existing.date.getTime() !== matchDate.getTime()
-
-      if (
-        existing.homeScore !== match.homeScore ||
-        existing.awayScore !== match.awayScore ||
-        existing.homeTeamId !== homeTeamId ||
-        existing.awayTeamId !== awayTeamId ||
-        existing.venue !== (match.grounds || null) ||
-        dateChanged
-      ) {
-        savedMatch = await prisma.match.update({
-          where: { leagueMatchId: matchId },
-          data: {
-            homeScore: match.homeScore,
-            awayScore: match.awayScore,
-            homeTeamId: homeTeamId,
-            awayTeamId: awayTeamId,
-            venue: match.grounds || null,
-            date: matchDate,
-          },
-        })
-
-        // If this AC SED match just got a result, add to newMatches for news generation
-        if (wasResultUpdated && (homeTeamId === ACSED_TEAM_ID || awayTeamId === ACSED_TEAM_ID)) {
+      if (!existing) {
+        savedMatch = await prisma.match.create({ data: matchData })
+        stats.newMatches++
+        if (homeTeamId === ACSED_TEAM_ID || awayTeamId === ACSED_TEAM_ID) {
           newMatches.push(savedMatch)
         }
+      } else {
+        savedMatch = existing
+        stats.updatedMatches++
+
+        // Check if this is a result update (match went from no result to having result)
+        const hadNoResult = existing.homeScore === null && existing.awayScore === null
+        const nowHasResult = match.homeScore !== null && match.awayScore !== null
+        wasResultUpdated = hadNoResult && nowHasResult
+
+        // Compare dates by timestamp — `Date !== Date` is always true by
+        // reference, so we have to .getTime() both sides. This is what
+        // catches the "match was created with no time and the schedule got
+        // added later" case.
+        const dateChanged = existing.date.getTime() !== matchDate.getTime()
+
+        if (
+          existing.homeScore !== match.homeScore ||
+          existing.awayScore !== match.awayScore ||
+          existing.homeTeamId !== homeTeamId ||
+          existing.awayTeamId !== awayTeamId ||
+          existing.venue !== (match.grounds || null) ||
+          dateChanged
+        ) {
+          savedMatch = await prisma.match.update({
+            // Keyed by `id`, not `leagueMatchId`: after adopting a republished
+            // fixture the league id has just changed under us.
+            where: { id: existing.id },
+            data: {
+              homeScore: match.homeScore,
+              awayScore: match.awayScore,
+              homeTeamId: homeTeamId,
+              awayTeamId: awayTeamId,
+              venue: match.grounds || null,
+              date: matchDate,
+            },
+          })
+
+          // If this AC SED match just got a result, add to newMatches for news generation
+          if (wasResultUpdated && (homeTeamId === ACSED_TEAM_ID || awayTeamId === ACSED_TEAM_ID)) {
+            newMatches.push(savedMatch)
+          }
+        }
       }
-    }
 
       // Fetch and save events (goals and cards) for played matches
       if (match.homeScore !== null && match.awayScore !== null) {

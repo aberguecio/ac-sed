@@ -7,6 +7,7 @@
 - `GET  /api/scrape/logs` — paginated scrape history
 - `GET  /api/tournaments` — list tournaments
 - `GET  /api/cron` — cron-only; header `X-Cron-Secret` required; runs scraper + content generation
+- `GET/POST /api/admin/matches/duplicates` — inspect / merge the duplicate `Match` rows an old fixture republication left behind (see *Match identity* below)
 
 ### News
 - `GET/POST /api/news` — list (paginated, `?all=true` includes unpublished) / create
@@ -52,6 +53,42 @@ Per stage:
 4. `/stages/{stageId}/match-days?filter=…` → upsert Match
 5. For scored matches → `/matches/{matchId}/events?filter={"include":["player","team"]}` → upsert ScrapedPlayer, MatchGoal, MatchCard (deletes existing events first → idempotent)
 
+### Match identity (`lib/match-consolidation.ts`)
+
+`Match.leagueMatchId` is not stable: the league sometimes deletes and
+republishes a whole fixture, handing the same real matches brand-new ids. It did
+it four times on 2026-09-05/06 and left 60 rows where 15 belonged, with the
+match's data scattered across the copies — attendance votes on one, the
+Instagram promo on another, the live score on the newest.
+
+So step 4 resolves a fixture entry in two hops (`resolveFixtureMatch`):
+
+1. `leagueMatchId` — the fast path.
+2. Failing that, the natural key `(tournamentId, stageId, groupId, homeTeamId,
+   awayTeamId)`. A hit means the league republished: the existing row **adopts**
+   the new `leagueMatchId` instead of a duplicate being created, and any other
+   stray copy is folded into it.
+
+Two rules that are easy to get wrong:
+
+- **`date` is not part of the identity.** It is precisely the field the league
+  mutates when a match is rescheduled (hence the `dateChanged` branch), so
+  keying on it would bring the duplication back through the other door.
+- **Rows whose `leagueMatchId` appears in the fixture being scraped are never
+  merged.** They belong to a match the league still publishes separately — a
+  second leg of the same pairing, say — and are not stale copies.
+
+TBD fixtures (both teams `null`) have no natural key and always take the
+`leagueMatchId` path.
+
+The merge itself (`consolidateMatches`) runs in one transaction: children move
+to the surviving row (the oldest of the group, so existing links keep
+resolving), attendance is merged per player instead of colliding on
+`(playerId, matchId)` — an answered vote beats a `PENDING` one — echoed
+goals/cards are trimmed while a genuine brace is kept, `context` / `venue` /
+`notifyGroupAt` / `eventsLocked` are inherited when the survivor lacks them, and
+the empty duplicates are deleted.
+
 Logos: parses Liga B CDN (`liga-b.nyc3.digitaloceanspaces.com`) UUIDs so we can render at any size.
 
 ## Key libs
@@ -68,6 +105,7 @@ Logos: parses Liga B CDN (`liga-b.nyc3.digitaloceanspaces.com`) UUIDs so we can 
 | `lib/ig-image-generator.ts` | Sharp composites for result / standings / promo / custom posts |
 | `lib/vs-image-generator.ts` | 1200×630 hero with team logos + gradient for news |
 | `lib/team-utils.ts` | `isACSED()`, `ACSED_TEAM_ID=2836`, `ACSED_TEAM_NAME='AC Sed'` |
+| `lib/match-consolidation.ts` | Match natural key, `resolveFixtureMatch()`, `consolidateMatches()`, `findDuplicateMatchGroups()` |
 
 ## Cron
 
