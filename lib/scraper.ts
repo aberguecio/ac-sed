@@ -220,34 +220,44 @@ async function saveMatchEvents(matchId: number, leagueMatchId: number) {
 
       // Ensure Team exists so ScrapedPlayer.teamId FK resolves
       if (event.teamId && event.team?.name) {
-        await prisma.team.upsert({
+        const knownTeam = await prisma.team.findUnique({
           where: { id: event.teamId },
-          create: { id: event.teamId, name: event.team.name },
-          update: {},
+          select: { id: true },
         })
+        if (!knownTeam) {
+          await prisma.team.create({ data: { id: event.teamId, name: event.team.name } })
+        }
       }
 
-      // Save or update player in ScrapedPlayer table
+      // Save or update player in ScrapedPlayer table (same dirty check as the
+      // other entities: the payload repeats every event on every scrape).
       const playerData = event.player || {}
-      await prisma.scrapedPlayer.upsert({
+      const incomingPlayer = {
+        firstName: playerData.firstName || '',
+        lastName: playerData.lastName || '',
+        email: playerData.email ?? null,
+        run: playerData.run ?? null,
+        teamId: event.teamId ?? null,
+      }
+      const storedPlayer = await prisma.scrapedPlayer.findUnique({
         where: { id: playerId },
-        create: {
-          id: playerId,
-          firstName: playerData.firstName || '',
-          lastName: playerData.lastName || '',
-          email: playerData.email,
-          run: playerData.run,
-          teamId: event.teamId,
-        },
-        update: {
-          firstName: playerData.firstName || '',
-          lastName: playerData.lastName || '',
-          email: playerData.email,
-          run: playerData.run,
-          teamId: event.teamId,
-          updatedAt: new Date(),
-        }
+        select: { firstName: true, lastName: true, email: true, run: true, teamId: true },
       })
+
+      if (!storedPlayer) {
+        await prisma.scrapedPlayer.create({ data: { id: playerId, ...incomingPlayer } })
+      } else if (
+        storedPlayer.firstName !== incomingPlayer.firstName ||
+        storedPlayer.lastName !== incomingPlayer.lastName ||
+        storedPlayer.email !== incomingPlayer.email ||
+        storedPlayer.run !== incomingPlayer.run ||
+        storedPlayer.teamId !== incomingPlayer.teamId
+      ) {
+        await prisma.scrapedPlayer.update({
+          where: { id: playerId },
+          data: { ...incomingPlayer, updatedAt: new Date() },
+        })
+      }
 
       const leagueEventId = typeof event.id === 'number' ? event.id : null
 
@@ -397,70 +407,90 @@ function extractLogoUrl(fullUrl: string | null | undefined): string | null {
 }
 
 // Helper to save or update team
+/**
+ * The entity upserts below keep identity — no churn, no burnt ids — but their
+ * `update` branch used to fire unconditionally. `saveTeam` alone runs ~36
+ * times per scrape for data that almost never changes, and each write bumps
+ * `updatedAt`, which is why **`Team.updatedAt` says nothing about freshness**:
+ * it advanced every two hours regardless. Compare first, write only on a real
+ * difference.
+ */
 async function saveTeam(teamId: number, teamName: string, logoUrl: string | null) {
-  await prisma.team.upsert({
+  const logo = extractLogoUrl(logoUrl)
+  const existing = await prisma.team.findUnique({
     where: { id: teamId },
-    create: {
-      id: teamId,
-      name: teamName,
-      logoUrl: extractLogoUrl(logoUrl),
-    },
-    update: {
-      name: teamName,
-      logoUrl: extractLogoUrl(logoUrl) || undefined,
-      updatedAt: new Date(),
-    }
+    select: { name: true, logoUrl: true },
+  })
+
+  if (!existing) {
+    await prisma.team.create({ data: { id: teamId, name: teamName, logoUrl: logo } })
+    return
+  }
+
+  // A missing logo in the payload never clears the stored one.
+  const nextLogo = logo || existing.logoUrl
+  if (existing.name === teamName && existing.logoUrl === nextLogo) return
+
+  await prisma.team.update({
+    where: { id: teamId },
+    data: { name: teamName, logoUrl: nextLogo, updatedAt: new Date() },
   })
 }
 
 // Helper to save or update tournament
 async function saveTournament(tournamentId: number, tournamentName: string, isActive: boolean) {
-  await prisma.tournament.upsert({
+  const existing = await prisma.tournament.findUnique({
     where: { id: tournamentId },
-    create: {
-      id: tournamentId,
-      name: tournamentName,
-      isActive,
-    },
-    update: {
-      name: tournamentName,
-      isActive,
-      updatedAt: new Date(),
-    }
+    select: { name: true, isActive: true },
+  })
+
+  if (!existing) {
+    await prisma.tournament.create({ data: { id: tournamentId, name: tournamentName, isActive } })
+    return
+  }
+  if (existing.name === tournamentName && existing.isActive === isActive) return
+
+  await prisma.tournament.update({
+    where: { id: tournamentId },
+    data: { name: tournamentName, isActive, updatedAt: new Date() },
   })
 }
 
 // Helper to save or update stage
 async function saveStage(stageId: number, tournamentId: number, stageName: string | null, orderIndex: number) {
-  await prisma.stage.upsert({
+  const existing = await prisma.stage.findUnique({
     where: { id: stageId },
-    create: {
-      id: stageId,
-      tournamentId,
-      name: stageName,
-      orderIndex,
-    },
-    update: {
-      name: stageName,
-      orderIndex,
-      updatedAt: new Date(),
-    }
+    select: { name: true, orderIndex: true },
+  })
+
+  if (!existing) {
+    await prisma.stage.create({ data: { id: stageId, tournamentId, name: stageName, orderIndex } })
+    return
+  }
+  if (existing.name === stageName && existing.orderIndex === orderIndex) return
+
+  await prisma.stage.update({
+    where: { id: stageId },
+    data: { name: stageName, orderIndex, updatedAt: new Date() },
   })
 }
 
 // Helper to save or update group
 async function saveGroup(groupId: number, stageId: number, groupName: string) {
-  await prisma.group.upsert({
+  const existing = await prisma.group.findUnique({
     where: { id: groupId },
-    create: {
-      id: groupId,
-      stageId,
-      name: groupName,
-    },
-    update: {
-      name: groupName,
-      updatedAt: new Date(),
-    }
+    select: { name: true },
+  })
+
+  if (!existing) {
+    await prisma.group.create({ data: { id: groupId, stageId, name: groupName } })
+    return
+  }
+  if (existing.name === groupName) return
+
+  await prisma.group.update({
+    where: { id: groupId },
+    data: { name: groupName, updatedAt: new Date() },
   })
 }
 
