@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ACSED_TEAM_NAME, ACSED_TEAM_ID } from '@/lib/team-utils'
+import { insertRelativeTo } from '@/lib/goal-sequence'
 
 interface Goal {
   id: number
@@ -72,11 +73,20 @@ export function GoalsAssistsEditor({ matchId, goals, players }: GoalsAssistsEdit
   const [minutes, setMinutes] = useState<Map<number, string>>(
     new Map(goals.map(g => [g.id, g.minute != null ? String(g.minute) : '']))
   )
-  // The order shown, which is also what gets sent on a drop. The server
-  // arrives already sorted; this only changes when someone drags.
+  // The order shown, which is also what gets sent on a drop. It is rewritten
+  // live while dragging, so the list itself is the preview: the card being
+  // moved travels with the cursor and the others open the gap.
   const [sequence, setSequence] = useState<number[]>(goals.map(g => g.id))
   const [draggingId, setDraggingId] = useState<number | null>(null)
-  const [dropTargetId, setDropTargetId] = useState<number | null>(null)
+  // HTML5 drag only lifts the element that carries `draggable`, so the whole
+  // card is draggable and the handle is what turns that on — otherwise the
+  // drag image would be the handle glyph alone, and text could not be
+  // selected inside the card.
+  const [dragArmedId, setDragArmedId] = useState<number | null>(null)
+  // Where the list stood before the drag, to put it back if the drag is
+  // abandoned (Escape, or a drop outside) or if the save is refused.
+  const preDragSequence = useRef<number[]>([])
+  const dropped = useRef(false)
   const [saving, setSaving] = useState<number | null>(null)
   const [messages, setMessages] = useState<Map<number, { type: 'success' | 'error'; text: string }>>(new Map())
   const [orderMessage, setOrderMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -184,8 +194,8 @@ export function GoalsAssistsEditor({ matchId, goals, players }: GoalsAssistsEdit
       setTimeout(() => setOrderMessage(null), 2000)
       router.refresh()
     } catch (err) {
-      // Put the list back the way the server has it.
-      setSequence(goals.map(g => g.id))
+      // Put the list back where it was before the drag.
+      setSequence(preDragSequence.current.length > 0 ? preDragSequence.current : goals.map(g => g.id))
       setOrderMessage({
         type: 'error',
         text: err instanceof Error ? err.message : 'Error al guardar el orden',
@@ -193,28 +203,69 @@ export function GoalsAssistsEditor({ matchId, goals, players }: GoalsAssistsEdit
     }
   }
 
-  const handleDrop = (targetId: number) => {
-    const sourceId = draggingId
+  const handleDragStart = (goalId: number) => {
+    preDragSequence.current = sequence
+    dropped.current = false
+    setDraggingId(goalId)
+  }
+
+  /**
+   * Places the dragged card relative to the one under the cursor: above it
+   * when the pointer is in its top half, below it in the bottom half. That
+   * is what makes dropping *between* two cards work — there is no need to
+   * land on top of the card you want to displace.
+   */
+  const handleDragOverRow = (event: React.DragEvent, overId: number) => {
+    if (draggingId == null) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+    if (overId === draggingId) return
+
+    const rect = event.currentTarget.getBoundingClientRect()
+    const below = event.clientY > rect.top + rect.height / 2
+
+    // `insertRelativeTo` returns the same array when nothing moves, so the
+    // continuous stream of `dragover` events costs no re-renders.
+    setSequence(prev => insertRelativeTo(prev, draggingId, overId, below))
+  }
+
+  const handleDrop = (event: React.DragEvent) => {
+    event.preventDefault()
+    dropped.current = true
     setDraggingId(null)
-    setDropTargetId(null)
-    if (sourceId == null || sourceId === targetId) return
+    setDragArmedId(null)
 
-    const from = sequence.indexOf(sourceId)
-    const to = sequence.indexOf(targetId)
-    if (from < 0 || to < 0) return
+    const before = preDragSequence.current
+    if (sequence.every((id, i) => id === before[i])) return
+    void persistSequence(sequence)
+  }
 
-    const next = [...sequence]
-    next.splice(from, 1)
-    next.splice(to, 0, sourceId)
-    setSequence(next)
-    void persistSequence(next)
+  // Fires on every drag, dropped or not. An abandoned drag has to leave the
+  // list as it was, since the reordering already happened on screen.
+  const handleDragEnd = () => {
+    if (!dropped.current && preDragSequence.current.length > 0) {
+      setSequence(preDragSequence.current)
+    }
+    setDraggingId(null)
+    setDragArmedId(null)
   }
 
   return (
-    <div className="space-y-4">
+    <div
+      // The list is the drop zone, not each card: the gap between two cards
+      // is part of the list, and letting go there must commit the order on
+      // screen rather than count as an abandoned drag.
+      onDragOver={e => {
+        if (draggingId == null) return
+        e.preventDefault()
+        e.dataTransfer.dropEffect = 'move'
+      }}
+      onDrop={handleDrop}
+      className="space-y-4"
+    >
       <p className="text-xs text-gray-500">
         Los goles con minuto se ordenan por minuto y no se mueven. Los que no tienen minuto se
-        arrastran a su lugar.
+        arrastran de la manija (⠿) y se sueltan entre dos tarjetas, en la posición donde quedan.
       </p>
 
       {orderMessage && (
@@ -233,7 +284,6 @@ export function GoalsAssistsEditor({ matchId, goals, players }: GoalsAssistsEdit
         const minuteValue = minutes.get(goal.id) ?? ''
         const isMinuted = goal.minute != null
         const isDragging = draggingId === goal.id
-        const isDropTarget = dropTargetId === goal.id && draggingId != null && draggingId !== goal.id
         const message = messages.get(goal.id)
         const isSaving = saving === goal.id
 
@@ -243,14 +293,15 @@ export function GoalsAssistsEditor({ matchId, goals, players }: GoalsAssistsEdit
           <div className="flex items-center gap-2">
             <span className="text-xs font-mono text-gray-400 w-6 text-right">{position + 1}</span>
             <span
-              draggable={!isMinuted}
-              onDragStart={() => setDraggingId(goal.id)}
-              onDragEnd={() => {
-                setDraggingId(null)
-                setDropTargetId(null)
+              onMouseDown={() => {
+                if (!isMinuted) setDragArmedId(goal.id)
+              }}
+              onMouseUp={() => setDragArmedId(null)}
+              onTouchStart={() => {
+                if (!isMinuted) setDragArmedId(goal.id)
               }}
               title={isMinuted ? 'Tiene minuto: su lugar lo define el minuto' : 'Arrastrar para reordenar'}
-              className={`select-none text-sm ${
+              className={`select-none text-base leading-none px-1 ${
                 isMinuted ? 'text-gray-300 cursor-not-allowed' : 'text-gray-400 cursor-grab active:cursor-grabbing'
               }`}
               aria-hidden={isMinuted}
@@ -281,24 +332,17 @@ export function GoalsAssistsEditor({ matchId, goals, players }: GoalsAssistsEdit
 
         const rowClasses = [
           'border rounded-lg transition-colors',
-          isDropTarget ? 'border-navy border-dashed' : 'border-gray-200',
-          isDragging ? 'opacity-50' : '',
+          isDragging ? 'border-navy border-dashed opacity-60 shadow-sm' : 'border-gray-200',
           isAcsed ? 'p-4 hover:border-gray-300' : 'p-3 bg-gray-50 opacity-90',
         ].join(' ')
 
         return (
           <div
             key={goal.id}
-            onDragOver={e => {
-              if (draggingId == null) return
-              e.preventDefault()
-              setDropTargetId(goal.id)
-            }}
-            onDragLeave={() => setDropTargetId(prev => (prev === goal.id ? null : prev))}
-            onDrop={e => {
-              e.preventDefault()
-              handleDrop(goal.id)
-            }}
+            draggable={dragArmedId === goal.id}
+            onDragStart={() => handleDragStart(goal.id)}
+            onDragEnd={handleDragEnd}
+            onDragOver={e => handleDragOverRow(e, goal.id)}
             className={rowClasses}
           >
             <div className="space-y-3">

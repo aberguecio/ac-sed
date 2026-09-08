@@ -76,6 +76,34 @@ export function normalizeByMinute<T extends SequencedGoal>(goals: T[]): T[] {
   return [...leading, ...blocks.flatMap(b => [b.anchor, ...b.followers])]
 }
 
+/**
+ * Where a dragged goal lands relative to the card under the cursor: above it
+ * when the pointer sits in the top half (`below: false`), under it in the
+ * bottom half. That halving is what makes a drop land *between* two cards —
+ * without it you have to cover the card you mean to displace, and the
+ * intention is ambiguous.
+ *
+ * Returns the sequence unchanged when nothing would move, so the caller can
+ * skip re-rendering on the `dragover` events that fire continuously.
+ */
+export function insertRelativeTo(
+  sequence: number[],
+  draggedId: number,
+  overId: number,
+  below: boolean,
+): number[] {
+  if (draggedId === overId) return sequence
+
+  const others = sequence.filter(id => id !== draggedId)
+  const overIndex = others.indexOf(overId)
+  if (overIndex < 0 || others.length === sequence.length) return sequence
+
+  const next = [...others]
+  next.splice(below ? overIndex + 1 : overIndex, 0, draggedId)
+
+  return next.every((id, i) => id === sequence[i]) ? sequence : next
+}
+
 /** `orderIndex` values for a sequence, 1-based and gapless. */
 export function orderIndexFor(goalIds: number[]): Map<number, number> {
   return new Map(goalIds.map((id, i) => [id, i + 1]))
