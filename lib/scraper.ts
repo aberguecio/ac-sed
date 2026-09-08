@@ -541,14 +541,6 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
       }
     }
 
-    // Delete only standings for this specific tournament/stage/group
-    await prisma.standing.deleteMany({
-      where: {
-        tournamentId,
-        stageId,
-        groupId: acsedGroupId
-      }
-    })
     const standingsData = standings.map((s: any) => ({
       tournamentId,
       stageId,
@@ -567,7 +559,37 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
     standingsData.sort((a, b) => b.points - a.points)
     // Asignar posiciones correctas
     standingsData.forEach((s, i) => (s.position = i + 1))
-    await prisma.standing.createMany({ data: standingsData })
+
+    // `(tournamentId, stageId, groupId, teamId)` is already unique in the
+    // schema — a team has exactly one row per phase — so there is no need to
+    // delete the group's table and rebuild it, which is what burned ~6.9k ids
+    // for 66 rows. Upsert, then drop whoever is no longer in the group.
+    await prisma.$transaction(async tx => {
+      for (const standing of standingsData) {
+        const { tournamentId: t, stageId: st, groupId: g, teamId, ...values } = standing
+        await tx.standing.upsert({
+          where: {
+            tournamentId_stageId_groupId_teamId: {
+              tournamentId: t,
+              stageId: st,
+              groupId: g!,
+              teamId,
+            },
+          },
+          create: standing,
+          update: values,
+        })
+      }
+
+      await tx.standing.deleteMany({
+        where: {
+          tournamentId,
+          stageId,
+          groupId: acsedGroupId,
+          teamId: { notIn: standingsData.map(s => s.teamId) },
+        },
+      })
+    })
     stats.standingsSaved = standingsData.length
     console.log('✓ Teams and standings saved')
   }
