@@ -122,6 +122,18 @@ model Match {
   homeTeam      Team?         @relation("HomeTeam", fields: [homeTeamId], references: [id])
   awayTeam      Team?         @relation("AwayTeam", fields: [awayTeamId], references: [id])
 
+  // Natural identity of a match: what does NOT change when the league
+  // deletes and republishes a fixture with fresh `leagueMatchId`s. Enforcing
+  // it here turns the duplication that produced 60 rows for 15 matches from
+  // "handled in code" into "impossible".
+  //
+  // Deliberately without `date`: that is the field the league mutates when a
+  // match is rescheduled, so keying on it would let the same bug back in
+  // through another door (see `lib/match-consolidation.ts`).
+  //
+  // TBD fixtures arrive with both teams null and Postgres treats NULLs as
+  // distinct in a unique index, so they never collide with each other.
+  @@unique([tournamentId, stageId, groupId, homeTeamId, awayTeamId])
   @@index([tournamentId, stageId, groupId])
   @@index([homeTeamId])
   @@index([awayTeamId])
