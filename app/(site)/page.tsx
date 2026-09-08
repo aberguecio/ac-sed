@@ -158,13 +158,13 @@ export default async function HomePage() {
               <div className="grid grid-cols-3 gap-2 md:gap-4">
                 {[
                   {
-                    label: "Rendimiento",
-                    value: `${allTimeTotals.performance}%`,
+                    label: "Partidos jugados",
+                    value: allTimeTotals.played,
                     color: "text-wheat",
                   },
                   {
-                    label: "Partidos ganados",
-                    value: allTimeTotals.won,
+                    label: "Rendimiento",
+                    value: `${allTimeTotals.performance}%`,
                     color: "text-green-400",
                   },
                   {
