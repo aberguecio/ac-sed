@@ -163,6 +163,11 @@ model Standing {
 model LeagueScorer {
   id           Int         @id @default(autoincrement())
   tournamentId Int
+  // Liga B player id, same id space as `Player.leaguePlayerId` and
+  // `ScrapedPlayer.id`, so a leaderboard row is linkable to our roster
+  // without fuzzy-matching the name. Null on rows written before this column
+  // existed, or when the API omits `player.id`.
+  leaguePlayerId Int?
   playerName   String
   teamId       Int
   goals        Int
@@ -172,6 +177,10 @@ model LeagueScorer {
   tournament   Tournament? @relation(fields: [tournamentId], references: [id])
   team         Team        @relation(fields: [teamId], references: [id])
 
+  // Natural key of a leaderboard row: one entry per player per tournament.
+  // Lets the scraper upsert instead of wiping every scorer of the tournament
+  // on each run, which burned ~334k ids for 1.419 rows.
+  @@unique([tournamentId, leaguePlayerId])
   @@index([tournamentId])
   @@index([teamId])
 }

@@ -583,20 +583,55 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
       }
     }
 
-    // Delete only scorers for this tournament
-    await prisma.leagueScorer.deleteMany({
-      where: { tournamentId }
-    })
+    // The API gives `player.id`; the old code dropped it, kept the
+    // concatenated name and had no key to update by — so it deleted every
+    // scorer of the tournament and reinserted the lot on each run.
     const scorersData = topScorers.map((s: any) => ({
       tournamentId,
+      leaguePlayerId: typeof s.player?.id === 'number' ? s.player.id : null,
       playerName: s.player
         ? `${s.player.firstName} ${s.player.lastName}`.trim()
         : s.playerName || 'Unknown',
       teamId: s.team?.id!,
       goals: s.goals || 0,
     })).filter(s => s.teamId) // Filter out any without teamId
-    await prisma.leagueScorer.createMany({ data: scorersData })
-    console.log('✓ Scorers saved')
+
+    const keyedScorers = scorersData.filter(s => s.leaguePlayerId !== null)
+    const namelessScorers = scorersData.filter(s => s.leaguePlayerId === null)
+
+    await prisma.$transaction(async tx => {
+      for (const scorer of keyedScorers) {
+        await tx.leagueScorer.upsert({
+          where: {
+            tournamentId_leaguePlayerId: {
+              tournamentId,
+              leaguePlayerId: scorer.leaguePlayerId!,
+            },
+          },
+          create: scorer,
+          // The league does correct a misspelt name, and a player can be
+          // transferred mid-tournament.
+          update: { playerName: scorer.playerName, teamId: scorer.teamId, goals: scorer.goals },
+        })
+      }
+
+      // Drop whoever left the leaderboard, plus the rows with no league id:
+      // those are either pre-migration copies of the same scorers or entries
+      // the API returned without `player.id`, and both are rewritten below.
+      const keptIds = keyedScorers.map(s => s.leaguePlayerId!)
+      const staleScorers: Prisma.LeagueScorerWhereInput =
+        keptIds.length > 0
+          ? { tournamentId, OR: [{ leaguePlayerId: null }, { leaguePlayerId: { notIn: keptIds } }] }
+          : { tournamentId }
+      await tx.leagueScorer.deleteMany({ where: staleScorers })
+
+      // No id means no key to upsert against; these still go in fresh.
+      if (namelessScorers.length > 0) {
+        console.warn(`  ⚠️  ${namelessScorers.length} scorer(s) came without player.id — inserted unkeyed`)
+        await tx.leagueScorer.createMany({ data: namelessScorers })
+      }
+    })
+    console.log(`✓ Scorers saved (${keyedScorers.length} keyed, ${namelessScorers.length} unkeyed)`)
   }
 
   // Process matches from all match days
