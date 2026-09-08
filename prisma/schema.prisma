@@ -122,6 +122,18 @@ model Match {
   homeTeam      Team?         @relation("HomeTeam", fields: [homeTeamId], references: [id])
   awayTeam      Team?         @relation("AwayTeam", fields: [awayTeamId], references: [id])
 
+  // Natural identity of a match: what does NOT change when the league
+  // deletes and republishes a fixture with fresh `leagueMatchId`s. Enforcing
+  // it here turns the duplication that produced 60 rows for 15 matches from
+  // "handled in code" into "impossible".
+  //
+  // Deliberately without `date`: that is the field the league mutates when a
+  // match is rescheduled, so keying on it would let the same bug back in
+  // through another door (see `lib/match-consolidation.ts`).
+  //
+  // TBD fixtures arrive with both teams null and Postgres treats NULLs as
+  // distinct in a unique index, so they never collide with each other.
+  @@unique([tournamentId, stageId, groupId, homeTeamId, awayTeamId])
   @@index([tournamentId, stageId, groupId])
   @@index([homeTeamId])
   @@index([awayTeamId])
@@ -163,6 +175,11 @@ model Standing {
 model LeagueScorer {
   id           Int         @id @default(autoincrement())
   tournamentId Int
+  // Liga B player id, same id space as `Player.leaguePlayerId` and
+  // `ScrapedPlayer.id`, so a leaderboard row is linkable to our roster
+  // without fuzzy-matching the name. Null on rows written before this column
+  // existed, or when the API omits `player.id`.
+  leaguePlayerId Int?
   playerName   String
   teamId       Int
   goals        Int
@@ -172,6 +189,10 @@ model LeagueScorer {
   tournament   Tournament? @relation(fields: [tournamentId], references: [id])
   team         Team        @relation(fields: [teamId], references: [id])
 
+  // Natural key of a leaderboard row: one entry per player per tournament.
+  // Lets the scraper upsert instead of wiping every scorer of the tournament
+  // on each run, which burned ~334k ids for 1.419 rows.
+  @@unique([tournamentId, leaguePlayerId])
   @@index([tournamentId])
   @@index([teamId])
 }
@@ -314,6 +335,12 @@ model ScrapeLog {
 model MatchGoal {
   id              Int            @id @default(autoincrement())
   matchId         Int
+  // Stable id of the event in the league's API. Null on rows created before
+  // this column existed and on goals added by hand in the admin. When it is
+  // present the scraper upserts by it instead of deleting every event of the
+  // match and reinserting, which is what used to burn ~77k ids and destroy
+  // the manual `rosterPlayerId` link on every re-scrape.
+  leagueEventId   Int?           @unique
   // Optional: present when the goal is attributed to a Liga B player.
   // Null when the goal belongs to a roster-only player (e.g. a substitute
   // not registered in Liga B).
@@ -344,6 +371,8 @@ model MatchGoal {
 model MatchCard {
   id              Int            @id @default(autoincrement())
   matchId         Int
+  // See `MatchGoal.leagueEventId` — same endpoint, same treatment.
+  leagueEventId   Int?           @unique
   // Optional: null when the card belongs to a roster-only player.
   leaguePlayerId  Int?
   cardType        String         // 'yellow' or 'red'

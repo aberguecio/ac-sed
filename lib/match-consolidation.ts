@@ -46,8 +46,14 @@ export interface ConsolidationReport {
     goals: number
     cards: number
   }
-  /** Match-level columns the canonical row was missing and inherited from a copy. */
+  /** Match-level columns the canonical row took from a copy. */
   inheritedFields: string[]
+  /**
+   * Divergent values that were dropped, as `field: kept <- discarded`. A
+   * human-written `context` is never overwritten, so if two copies carry one
+   * the loser is reported here instead of vanishing.
+   */
+  discarded: string[]
 }
 
 /**
@@ -172,6 +178,7 @@ export async function consolidateMatches(
     },
     merged: { playerMatches: 0, goals: 0, cards: 0 },
     inheritedFields: [],
+    discarded: [],
   }
   if (ids.length === 0) return report
 
@@ -248,18 +255,47 @@ export async function consolidateMatches(
       await tx.matchCard.updateMany({ where: { matchId: { in: ids } }, data: { matchId: canonicalId } })
     ).count
 
-    // --- Match-level columns the canonical row is missing ---
+    // --- Match-level columns ---
     const inherited: Prisma.MatchUpdateInput = {}
-    const takeIfNull = <K extends 'venue' | 'roundName' | 'context'>(field: K) => {
-      if (canonical[field] !== null) return
-      const donor = duplicates.find(d => d[field] !== null)
-      if (!donor) return
-      inherited[field] = donor[field] as string
+
+    /**
+     * League-sourced scalars: the newest copy wins, even when the canonical
+     * row already has a value. Filling only nulls looked safe until the data
+     * proved otherwise — the league moved two matches to another pitch
+     * (13→7, 14→8) and the value survived on the newest copy while the
+     * canonical one kept the stale pitch. A republication is a fresher read
+     * of the same match, so it is the one to trust.
+     */
+    const takeFromNewest = <K extends 'venue' | 'roundName'>(field: K) => {
+      // Highest id = most recent publication.
+      const newest = [...duplicates].sort((a, b) => b.id - a.id).find(d => d[field] !== null)
+      if (!newest || newest[field] === canonical[field]) return
+      inherited[field] = newest[field] as string
       report.inheritedFields.push(field)
+      if (canonical[field] !== null) {
+        report.discarded.push(`${field}: ${String(newest[field])} <- ${String(canonical[field])}`)
+      }
     }
-    takeIfNull('venue')
-    takeIfNull('roundName')
-    takeIfNull('context')
+    takeFromNewest('venue')
+    takeFromNewest('roundName')
+
+    // `context` is the opposite case: a human typed it, so nothing overwrites
+    // it. If the canonical row has none, inherit the newest; if two copies
+    // disagree, keep the canonical one and report what was dropped rather
+    // than losing it silently.
+    const contextDonors = [...duplicates].sort((a, b) => b.id - a.id).filter(d => d.context !== null)
+    if (contextDonors.length > 0) {
+      if (canonical.context === null) {
+        inherited.context = contextDonors[0].context as string
+        report.inheritedFields.push('context')
+      } else {
+        for (const donor of contextDonors) {
+          if (donor.context !== canonical.context) {
+            report.discarded.push(`context (match ${donor.id}): ${donor.context}`)
+          }
+        }
+      }
+    }
 
     // A pending group summary must still fire: keep the earliest deadline.
     const notifyDeadlines = [canonical.notifyGroupAt, ...duplicates.map(d => d.notifyGroupAt)].filter(
@@ -282,6 +318,10 @@ export async function consolidateMatches(
 
     if (Object.keys(inherited).length > 0) {
       await tx.match.update({ where: { id: canonicalId }, data: inherited })
+    }
+
+    for (const dropped of report.discarded) {
+      console.warn(`  ⚠️  Consolidation dropped a divergent value on match ${canonicalId} — ${dropped}`)
     }
 
     await tx.match.deleteMany({ where: { id: { in: ids } } })

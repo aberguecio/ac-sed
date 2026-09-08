@@ -48,10 +48,58 @@ Base URL `https://api.ligab.cl/v1`, league `24`.
 
 Per stage:
 1. `/stages/{stageId}/groups` → find AC SED group
-2. `/groups/{groupId}/standings` → upsert Team + Standing
-3. `/tournaments/{tid}/top-scorers` → LeagueScorer
-4. `/stages/{stageId}/match-days?filter=…` → upsert Match
-5. For scored matches → `/matches/{matchId}/events?filter={"include":["player","team"]}` → upsert ScrapedPlayer, MatchGoal, MatchCard (deletes existing events first → idempotent)
+2. `/groups/{groupId}/standings` → upsert Team + Standing (keyed on `(tournamentId, stageId, groupId, teamId)`; teams no longer in the group are deleted)
+3. `/tournaments/{tid}/top-scorers` → upsert LeagueScorer keyed on `(tournamentId, leaguePlayerId)`
+4. `/stages/{stageId}/match-days?filter=…` → upsert Match (identity below)
+5. For scored matches → `/matches/{matchId}/events?filter={"include":["player","team"]}` → upsert ScrapedPlayer, and MatchGoal / MatchCard keyed on `leagueEventId`, deleting the events the payload no longer carries
+
+`fetchAPI` retries 429/5xx and network errors three times with exponential
+backoff. Everything in a stage shares one scrape, so an unretried failure used
+to cost the whole run — a Cloudflare 521 did exactly that on 2026-09-08.
+
+### Writing rules
+
+Every collection the scraper owns is keyed and upserted; none is deleted and
+rebuilt. That mattered: the delete-and-reinsert pattern burned ~421k ids for
+~2.500 real rows, and it destroyed manual edits on every pass, since a
+hand-set `rosterPlayerId` lives on a row that was about to be deleted.
+
+| Collection | Key | Deletes |
+|---|---|---|
+| `Standing` | `(tournamentId, stageId, groupId, teamId)` | teams no longer in the group |
+| `LeagueScorer` | `(tournamentId, leaguePlayerId)` | players no longer on the leaderboard |
+| `MatchGoal` / `MatchCard` | `leagueEventId` | events the payload no longer returns |
+| `Match` | `leagueMatchId`, then the natural key | never |
+
+On update, the fields a human can edit are left out of the payload on purpose:
+`rosterPlayerId`, `minute`, `reason` and the assist fields on events;
+`context` on a match. `eventsLocked` still short-circuits the whole event sync
+for a match someone edited by hand.
+
+Deleting by absence needs a bound, or a stale response for an old match would
+wipe events nobody can rebuild: `EVENT_FETCH_WINDOW_DAYS` (30) skips matches
+played longer ago **that already have a score**. Without a score an old match
+is the "result not entered yet" case and keeps being polled — the match of
+2026-09-07 still had none 15 h later.
+
+The entity upserts (`Team`, `Tournament`, `Stage`, `Group`, `ScrapedPlayer`)
+compare before writing. Consequence worth knowing: `Team.updatedAt` used to
+advance every two hours regardless, so historical values of it mean nothing.
+
+### What the scraper reports (`lib/match-changes.ts`)
+
+`runScraper` returns `changes: MatchChange[]` — `created`, `result-arrived`,
+`rescheduled`, `updated` — for AC SED matches only.
+
+Anything that generates content takes its matches from
+`matchesWithNewResult(changes)`. This is not cosmetic: the old return value was
+a single `newMatches` bag meaning both "a row appeared" and "the result
+arrived", each consumer had to re-filter it, one forgot, and four fixture
+republications produced 20 news articles with invented scorelines. With the
+cases named, a `created` match cannot reach the chronicle generator.
+
+`newMatches` is still returned with its historical meaning (created or newly
+scored) for callers that want both.
 
 ### Match identity (`lib/match-consolidation.ts`)
 
@@ -106,6 +154,7 @@ Logos: parses Liga B CDN (`liga-b.nyc3.digitaloceanspaces.com`) UUIDs so we can 
 | `lib/vs-image-generator.ts` | 1200×630 hero with team logos + gradient for news |
 | `lib/team-utils.ts` | `isACSED()`, `ACSED_TEAM_ID=2836`, `ACSED_TEAM_NAME='AC Sed'` |
 | `lib/match-consolidation.ts` | Match natural key, `resolveFixtureMatch()`, `consolidateMatches()`, `findDuplicateMatchGroups()` |
+| `lib/match-changes.ts` | `MatchChange` union + `matchesWithNewResult()` — the only door from a scrape to content |
 
 ## Cron
 
@@ -114,6 +163,29 @@ Docker `cron` service (alpine + curl). Schedule:
 - **Dev**: `0 8 * * 1` (Mon 08:00 UTC)
 
 Hits `http://web:3000/api/cron` with `X-Cron-Secret: ${CRON_SECRET}`. No Bull/Agenda — the Docker cron service is the only scheduler.
+
+In-app jobs live in `JOB_REGISTRY` (`lib/cron-jobs.ts`) and are seeded into
+`CronJob` by `seedDefaultJobs()` on boot:
+
+| Key | When | What |
+|---|---|---|
+| `weekly-result` | Tue 12:00 | scrape, then a chronicle for each `result-arrived` match |
+| `monday-promo` | Mon 09:00 | Instagram promo for the day's match |
+| `saturday-attendance` | Sat 12:00 | attendance poll broadcast |
+| `refresh-ig-token` | Mon 04:00 | roll the long-lived Instagram token |
+| `duplicate-matches-check` | Mon 05:00 | report duplicate `Match` rows (detection only) |
+
+`duplicate-matches-check` reports `error` when it finds something so the admin
+panel shows it in red. It exists because the scraper only visits the active
+tournament: a duplicate left in an older one is never looked at again, which
+is how 45 orphan rows went unnoticed for three days.
+
+## Schema changes
+
+There is no `prisma/migrations` directory — the schema is applied with
+`npm run db:push` (`prisma db push`), followed by `npm run db:generate` for the
+client. A push that adds a unique index fails while duplicates exist, so clean
+the data first.
 
 ## Environment variables (see `.env.example`)
 

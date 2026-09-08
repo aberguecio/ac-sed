@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { runScraper } from '@/lib/scraper'
+import { matchesWithNewResult, newOrScoredMatches } from '@/lib/match-changes'
 import { generateMatchNews } from '@/lib/ai'
 import { prisma } from '@/lib/db'
 import slugify from 'slugify'
@@ -22,11 +23,12 @@ export async function POST(request: Request) {
     }
     // If neither provided, options remains undefined (scrape active tournament)
 
-    const { newMatches, logId } = await runScraper('manual', options)
+    const { changes, logId } = await runScraper('manual', options)
 
-    // Only generate news for matches that have been played (have scores)
-    const playedMatches = newMatches.filter(m => m.homeScore !== null && m.awayScore !== null)
-    console.log(`Generating news for ${playedMatches.length} played matches out of ${newMatches.length} total new matches`)
+    // Only matches whose result arrived — from the typed change set, so the
+    // rule lives in one place instead of being re-derived per call site.
+    const playedMatches = matchesWithNewResult(changes)
+    console.log(`Generating news for ${playedMatches.length} scored matches out of ${changes.length} AC SED changes`)
 
     const articles = []
     for (const match of playedMatches) {
@@ -102,7 +104,14 @@ export async function POST(request: Request) {
       }
     }
 
-    return NextResponse.json({ success: true, logId, newMatches: newMatches.length, articlesGenerated: articles.length })
+    // `newMatches` in the response keeps its old meaning (created or newly
+    // scored) so the admin UI reads the same number as before.
+    return NextResponse.json({
+      success: true,
+      logId,
+      newMatches: newOrScoredMatches(changes).length,
+      articlesGenerated: articles.length,
+    })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     return NextResponse.json({ error: message }, { status: 500 })
