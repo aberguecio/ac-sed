@@ -1,7 +1,7 @@
 import { generateText } from 'ai'
 import type { Match } from '@prisma/client'
 import { prisma } from '@/lib/db'
-import { isACSED, ACSED_TEAM_ID } from '@/lib/team-utils'
+import { isACSED, ACSED_TEAM_ID, ACSED_TEAM_NAME } from '@/lib/team-utils'
 import { getAiConfig, getModelForChannel, cleanModelText } from '@/lib/ai-config'
 import { isOutOfCreditError, notifyAiOutOfCredits } from '@/lib/whatsapp-notifier'
 import { scorerRef, assistRef, cardPlayerRef, type PlayerRef } from '@/lib/player-ref'
@@ -26,7 +26,17 @@ export async function getMatchContext(match: Match & { homeTeam?: { name: string
         assistPlayer: true,
         rosterPlayer: true,
         assistRosterPlayer: true,
-      }
+      },
+      // In the order the goals happened, as far as it is known: the hand-set
+      // sequence first, then minute, then whatever the league's events
+      // endpoint returned. Without this the context was assembled in
+      // arbitrary row order, so a chronicle could not tell which goal opened
+      // the match. See `lib/goal-sequence.ts`.
+      orderBy: [
+        { orderIndex: { sort: 'asc', nulls: 'last' } },
+        { minute: { sort: 'asc', nulls: 'last' } },
+        { createdAt: 'asc' },
+      ],
     }),
     prisma.matchCard.findMany({
       where: { matchId: match.id },
@@ -325,6 +335,24 @@ export async function generateMatchNews(
   if (rivalGoals.length > 0) {
     const goalScorers = rivalGoals.map(g => scorerRef(g)?.name ?? 'Desconocido').join(', ')
     goalsInfo += `\n- Goleadores ${rival}: ${goalScorers}`
+  }
+
+  // The running order of the match, both teams together — this is what lets a
+  // chronicle say who opened and who sealed it instead of listing names. Only
+  // worth stating when there is a sequence to speak of.
+  if (goals.length > 1) {
+    const sequence = goals
+      .map((g, i) => {
+        const team = isAcsedEvent(g) ? ACSED_TEAM_NAME : rival
+        const scorer = scorerRef(g)?.name ?? 'Desconocido'
+        const minute = g.minute != null ? ` (${g.minute}')` : ''
+        return `${i + 1}) ${team} — ${scorer}${minute}`
+      })
+      .join(' ')
+    goalsInfo += `\n- Secuencia de goles: ${sequence}`
+    if (goals.every(g => g.minute === null)) {
+      goalsInfo += '\n  (sin minutos cargados: el orden es el registrado a mano, no hay tiempos exactos)'
+    }
   }
 
   let cardsInfo = ''

@@ -239,7 +239,14 @@ export const getMatchGoalsTool = tool({
       prisma.matchGoal.findMany({
         where: { matchId },
         include: { scrapedPlayer: true, rosterPlayer: true },
-        orderBy: { minute: 'asc' },
+        // `minute` alone sorted nothing: the league never sends one, so every
+        // row was null. The hand-set sequence comes first now, and the rows
+        // nobody ordered keep the league's own event order.
+        orderBy: [
+          { orderIndex: { sort: 'asc', nulls: 'last' } },
+          { minute: { sort: 'asc', nulls: 'last' } },
+          { createdAt: 'asc' },
+        ],
       }),
       buildLeaguePlayerNameMap(),
     ])

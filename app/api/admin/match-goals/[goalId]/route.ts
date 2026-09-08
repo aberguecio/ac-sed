@@ -1,12 +1,18 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
+import { renormalizeGoalOrder } from '@/lib/goal-sequence'
 
 type PatchBody = {
   rosterPlayerId?: number | null
   leaguePlayerId?: number | null
   assistRosterPlayerId?: number | null
   assistLeaguePlayerId?: number | null
+  minute?: number | null
 }
+
+// Regulation plus stoppage plus extra time, with room to spare. The league
+// never sends a minute, so every value here was typed by a human.
+const MAX_MINUTE = 200
 
 // Resolve the (leaguePlayerId, rosterPlayerId) pair for a roster-driven
 // assignment. When the client sends a rosterPlayerId, look up the linked
@@ -59,11 +65,22 @@ export async function PATCH(
 
     const hasScorer = 'rosterPlayerId' in body || 'leaguePlayerId' in body
     const hasAssist = 'assistRosterPlayerId' in body || 'assistLeaguePlayerId' in body
-    if (!hasScorer && !hasAssist) {
+    const hasMinute = 'minute' in body
+    if (!hasScorer && !hasAssist && !hasMinute) {
       return NextResponse.json(
-        { error: 'At least one of rosterPlayerId / leaguePlayerId / assist* required' },
+        { error: 'At least one of rosterPlayerId / leaguePlayerId / assist* / minute required' },
         { status: 400 },
       )
+    }
+
+    if (hasMinute && body.minute !== null) {
+      const minute = body.minute
+      if (typeof minute !== 'number' || !Number.isInteger(minute) || minute < 0 || minute > MAX_MINUTE) {
+        return NextResponse.json(
+          { error: `minute debe ser un entero entre 0 y ${MAX_MINUTE}, o null` },
+          { status: 400 },
+        )
+      }
     }
 
     const existingGoal = await prisma.matchGoal.findUnique({
@@ -79,7 +96,12 @@ export async function PATCH(
       rosterPlayerId?: number | null
       assistLeaguePlayerId?: number | null
       assistRosterPlayerId?: number | null
+      minute?: number | null
     } = {}
+
+    if (hasMinute) {
+      updateData.minute = body.minute ?? null
+    }
 
     if (hasScorer) {
       const pair = await resolvePair(body, 'rosterPlayerId', 'leaguePlayerId')
@@ -120,6 +142,12 @@ export async function PATCH(
       where: { id: existingGoal.matchId },
       data: { eventsLocked: true },
     })
+
+    // A minute decides where its goal sits, so setting or clearing one moves
+    // it — and the minute-less goals dragged around it have to stay put.
+    if (hasMinute) {
+      await renormalizeGoalOrder(existingGoal.matchId)
+    }
 
     return NextResponse.json(goal)
   } catch (err) {
