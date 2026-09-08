@@ -353,8 +353,13 @@ interface StageStats {
   groupsFound: number
   teamsProcessed: number
   standingsSaved: number
+  /** Fixture entries seen, whatever we ended up doing with them. */
+  matchesFound: number
   newMatches: number
+  /** Rows we actually wrote to. */
   updatedMatches: number
+  /** Rows we looked at and left alone. */
+  unchangedMatches: number
 }
 
 async function processSingleStage(tournamentId: number, stageId: number): Promise<{ matches: Match[], stats: StageStats }> {
@@ -362,8 +367,10 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
     groupsFound: 0,
     teamsProcessed: 0,
     standingsSaved: 0,
+    matchesFound: 0,
     newMatches: 0,
-    updatedMatches: 0
+    updatedMatches: 0,
+    unchangedMatches: 0,
   }
 
   // Get groups for this stage
@@ -493,10 +500,9 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
     matchDays.flatMap((day: any) => (day.matches || []).map((m: any) => String(m.id))),
   )
 
-  let totalMatches = 0
   for (const matchDay of matchDays) {
     const matches = matchDay.matches || []
-    totalMatches += matches.length
+    stats.matchesFound += matches.length
 
     for (const match of matches) {
       const matchId = String(match.id)
@@ -565,7 +571,6 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
         }
       } else {
         savedMatch = existing
-        stats.updatedMatches++
 
         // Check if this is a result update (match went from no result to having result)
         const hadNoResult = existing.homeScore === null && existing.awayScore === null
@@ -600,10 +605,14 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
             },
           })
 
+          stats.updatedMatches++
+
           // If this AC SED match just got a result, add to newMatches for news generation
           if (wasResultUpdated && (homeTeamId === ACSED_TEAM_ID || awayTeamId === ACSED_TEAM_ID)) {
             newMatches.push(savedMatch)
           }
+        } else {
+          stats.unchangedMatches++
         }
       }
 
@@ -614,8 +623,10 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
     }
   }
 
-  console.log(`  Found ${totalMatches} total matches`)
-  console.log(`  Stats: ${stats.newMatches} new, ${stats.updatedMatches} updated`)
+  console.log(`  Found ${stats.matchesFound} total matches`)
+  console.log(
+    `  Stats: ${stats.newMatches} new, ${stats.updatedMatches} updated, ${stats.unchangedMatches} unchanged`,
+  )
 
   return { matches: newMatches, stats }
 }
@@ -694,8 +705,10 @@ export async function runScraper(
     }
 
     const allNewMatches: Match[] = []
+    let totalMatchesFound = 0
     let totalNewMatches = 0
     let totalUpdatedMatches = 0
+    let totalUnchangedMatches = 0
     let totalTeamsProcessed = 0
     let totalStandingsSaved = 0
     let totalGroupsFound = 0
@@ -709,14 +722,20 @@ export async function runScraper(
       console.log(`\n🔄 Processing stage ${stageId}...`)
       const result = await processSingleStage(tournamentId, stageId)
       allNewMatches.push(...result.matches)
+      totalMatchesFound += result.stats.matchesFound
       totalNewMatches += result.stats.newMatches
       totalUpdatedMatches += result.stats.updatedMatches
+      totalUnchangedMatches += result.stats.unchangedMatches
       totalTeamsProcessed += result.stats.teamsProcessed
       totalStandingsSaved += result.stats.standingsSaved
       totalGroupsFound += result.stats.groupsFound
     }
 
-    console.log(`✅ Scraper completed! Found ${allNewMatches.length} new AC SED matches across all stages`)
+    console.log(
+      `✅ Scraper completed! ${totalMatchesFound} fixture entries seen, ` +
+        `${totalNewMatches} created, ${totalUpdatedMatches} written, ${totalUnchangedMatches} unchanged, ` +
+        `${allNewMatches.length} new AC SED matches for content`,
+    )
 
     await prisma.scrapeLog.update({
       where: { id: log.id },
@@ -726,7 +745,9 @@ export async function runScraper(
         tournamentId,
         tournamentName,
         stageIds: JSON.stringify(stagesToProcess),
-        matchesFound: allNewMatches.length,
+        // Fixture entries seen, not AC SED matches that changed — those are
+        // `newMatches` / `updatedMatches` below.
+        matchesFound: totalMatchesFound,
         newMatches: totalNewMatches,
         updatedMatches: totalUpdatedMatches,
         teamsProcessed: totalTeamsProcessed,
