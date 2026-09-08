@@ -314,6 +314,12 @@ model ScrapeLog {
 model MatchGoal {
   id              Int            @id @default(autoincrement())
   matchId         Int
+  // Stable id of the event in the league's API. Null on rows created before
+  // this column existed and on goals added by hand in the admin. When it is
+  // present the scraper upserts by it instead of deleting every event of the
+  // match and reinserting, which is what used to burn ~77k ids and destroy
+  // the manual `rosterPlayerId` link on every re-scrape.
+  leagueEventId   Int?           @unique
   // Optional: present when the goal is attributed to a Liga B player.
   // Null when the goal belongs to a roster-only player (e.g. a substitute
   // not registered in Liga B).
@@ -344,6 +350,8 @@ model MatchGoal {
 model MatchCard {
   id              Int            @id @default(autoincrement())
   matchId         Int
+  // See `MatchGoal.leagueEventId` — same endpoint, same treatment.
+  leagueEventId   Int?           @unique
   // Optional: null when the card belongs to a roster-only player.
   leaguePlayerId  Int?
   cardType        String         // 'yellow' or 'red'

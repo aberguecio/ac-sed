@@ -1,5 +1,5 @@
 import { prisma } from './db'
-import type { Match } from '@prisma/client'
+import type { Match, Prisma } from '@prisma/client'
 import { resolveFixtureMatch, type MatchNaturalKey } from './match-consolidation'
 
 const ACSED_TEAM_ID = 2836 // AC SED team ID
@@ -148,35 +148,53 @@ async function fetchAPI(endpoint: string) {
   throw lastError ?? new Error(`API error: ${endpoint}`)
 }
 
+/**
+ * Matches played more than this long ago that already carry a score are not
+ * re-fetched. Two reasons: their events are settled, and the sync below
+ * deletes rows the API no longer returns — a stale or emptied response for an
+ * old match would otherwise wipe events nobody can rebuild. The second
+ * condition matters as much as the first: an old match WITHOUT a score is
+ * exactly the "they still haven't entered the result" case, so it keeps being
+ * polled. No empirical basis for the number, so it is a named constant and
+ * every skip is logged.
+ */
+const EVENT_FETCH_WINDOW_DAYS = 30
+
 async function saveMatchEvents(matchId: number, leagueMatchId: number) {
   try {
-    // Check if match events are locked (manually edited)
     const match = await prisma.match.findUnique({
       where: { id: matchId },
-      select: { eventsLocked: true }
+      select: { eventsLocked: true, date: true, homeScore: true, awayScore: true },
     })
+    if (!match) return
 
-    if (match?.eventsLocked) {
+    // Check if match events are locked (manually edited)
+    if (match.eventsLocked) {
       console.log(`  🔒 Skipping events for match ${leagueMatchId} (manually edited)`)
+      return
+    }
+
+    const ageDays = (Date.now() - match.date.getTime()) / 86_400_000
+    const hasScore = match.homeScore !== null && match.awayScore !== null
+    if (ageDays > EVENT_FETCH_WINDOW_DAYS && hasScore) {
+      console.log(
+        `  ⏭️  Skipping events for match ${leagueMatchId} (played ${Math.floor(ageDays)} days ago, score already in)`,
+      )
       return
     }
 
     // Fetch events (goals and cards) from API
     const events = await fetchAPI(`/matches/${leagueMatchId}/events?filter={"include":["player","team"]}`)
 
-    if (!Array.isArray(events) || events.length === 0) {
+    if (!Array.isArray(events)) {
       return
     }
 
     console.log(`  📝 Processing ${events.length} events for match ${leagueMatchId}`)
 
-    // Delete existing events for this match to avoid duplicates when re-scraping
-    await prisma.matchGoal.deleteMany({ where: { matchId } })
-    await prisma.matchCard.deleteMany({ where: { matchId } })
-
-    // Map Liga B player ids to linked roster players so re-created goals/cards
-    // keep their `rosterPlayerId`. Without this, every re-scrape would drop the
-    // link and the stats page would show the player twice (roster vs scraped).
+    // Map Liga B player ids to linked roster players so newly created
+    // goals/cards start out linked to the right roster player. Existing rows
+    // keep whatever link they have — see the `update` payloads below.
     const linkedRoster = await prisma.player.findMany({
       where: { leaguePlayerId: { not: null } },
       select: { id: true, leaguePlayerId: true },
@@ -184,6 +202,15 @@ async function saveMatchEvents(matchId: number, leagueMatchId: number) {
     const rosterByLeagueId = new Map<number, number>(
       linkedRoster.map(p => [p.leaguePlayerId!, p.id]),
     )
+
+    // The league gives every event a stable id (`{ id: 216293, type: 'g',
+    // playerId: 22848 }`). With it we can upsert and then delete what did not
+    // come back; without it there is nothing to UPDATE against, since two
+    // goals by the same player are identical rows (`minute` is always null).
+    // So the id-less payload keeps the old delete-and-reinsert behaviour.
+    type IncomingEvent = { leagueEventId: number | null; leaguePlayerId: number; teamName: string }
+    const goals: IncomingEvent[] = []
+    const cards: (IncomingEvent & { cardType: string })[] = []
 
     for (const event of events) {
       const playerId = event.playerId
@@ -222,37 +249,125 @@ async function saveMatchEvents(matchId: number, leagueMatchId: number) {
         }
       })
 
-      // Save event based on type
-      if (event.type === 'g') {
-        // Goal - create every time (same player can score multiple goals)
-        await prisma.matchGoal.create({
-          data: {
-            matchId,
-            leaguePlayerId: playerId,
-            rosterPlayerId: rosterByLeagueId.get(playerId) ?? null,
-            teamName,
-            minute: null, // API doesn't provide minute
-          }
-        })
-      } else if (event.type === 'yc' || event.type === 'rc') {
-        // Yellow or Red card
-        const cardType = event.type === 'yc' ? 'yellow' : 'red'
+      const leagueEventId = typeof event.id === 'number' ? event.id : null
 
-        await prisma.matchCard.create({
-          data: {
-            matchId,
-            leaguePlayerId: playerId,
-            rosterPlayerId: rosterByLeagueId.get(playerId) ?? null,
-            cardType,
-            teamName,
-            minute: null,
-            reason: null,
-          }
+      if (event.type === 'g') {
+        goals.push({ leagueEventId, leaguePlayerId: playerId, teamName })
+      } else if (event.type === 'yc' || event.type === 'rc') {
+        cards.push({
+          leagueEventId,
+          leaguePlayerId: playerId,
+          teamName,
+          cardType: event.type === 'yc' ? 'yellow' : 'red',
         })
       }
     }
 
-    console.log(`  ✓ Saved events for match ${leagueMatchId}`)
+    const everyEventHasId = [...goals, ...cards].every(e => e.leagueEventId !== null)
+
+    // One transaction: the old code deleted every event and then inserted one
+    // by one, so a crash mid-loop (or a container recreated under it, which
+    // happened) left the match with half its goals.
+    await prisma.$transaction(async tx => {
+      if (!everyEventHasId) {
+        console.warn(`  ⚠️  Events for match ${leagueMatchId} came without ids — falling back to replace-all`)
+        await tx.matchGoal.deleteMany({ where: { matchId } })
+        await tx.matchCard.deleteMany({ where: { matchId } })
+        for (const goal of goals) {
+          await tx.matchGoal.create({
+            data: {
+              matchId,
+              leagueEventId: goal.leagueEventId,
+              leaguePlayerId: goal.leaguePlayerId,
+              rosterPlayerId: rosterByLeagueId.get(goal.leaguePlayerId) ?? null,
+              teamName: goal.teamName,
+              minute: null, // API doesn't provide minute
+            },
+          })
+        }
+        for (const card of cards) {
+          await tx.matchCard.create({
+            data: {
+              matchId,
+              leagueEventId: card.leagueEventId,
+              leaguePlayerId: card.leaguePlayerId,
+              rosterPlayerId: rosterByLeagueId.get(card.leaguePlayerId) ?? null,
+              cardType: card.cardType,
+              teamName: card.teamName,
+              minute: null,
+              reason: null,
+            },
+          })
+        }
+        return
+      }
+
+      for (const goal of goals) {
+        await tx.matchGoal.upsert({
+          where: { leagueEventId: goal.leagueEventId! },
+          create: {
+            matchId,
+            leagueEventId: goal.leagueEventId,
+            leaguePlayerId: goal.leaguePlayerId,
+            rosterPlayerId: rosterByLeagueId.get(goal.leaguePlayerId) ?? null,
+            teamName: goal.teamName,
+            minute: null, // API doesn't provide minute
+          },
+          // `rosterPlayerId`, `minute` and the assist fields are left alone:
+          // those are the hand-added ones, and re-scraping used to wipe them.
+          update: {
+            matchId,
+            leaguePlayerId: goal.leaguePlayerId,
+            teamName: goal.teamName,
+          },
+        })
+      }
+
+      for (const card of cards) {
+        await tx.matchCard.upsert({
+          where: { leagueEventId: card.leagueEventId! },
+          create: {
+            matchId,
+            leagueEventId: card.leagueEventId,
+            leaguePlayerId: card.leaguePlayerId,
+            rosterPlayerId: rosterByLeagueId.get(card.leaguePlayerId) ?? null,
+            cardType: card.cardType,
+            teamName: card.teamName,
+            minute: null,
+            reason: null,
+          },
+          // `reason` and `rosterPlayerId` are hand-added; leave them.
+          update: {
+            matchId,
+            leaguePlayerId: card.leaguePlayerId,
+            cardType: card.cardType,
+            teamName: card.teamName,
+          },
+        })
+      }
+
+      // Delete by absence: an event the league removed disappears here too.
+      // Rows with no `leagueEventId` are pre-migration copies of these same
+      // events, so they go as well — a partial read fixes itself on the next
+      // run, and a match a human edited never reaches this code
+      // (`eventsLocked` returned early).
+      const goalIds = goals.map(g => g.leagueEventId!)
+      const cardIds = cards.map(c => c.leagueEventId!)
+
+      const staleGoals: Prisma.MatchGoalWhereInput =
+        goalIds.length > 0
+          ? { matchId, OR: [{ leagueEventId: null }, { leagueEventId: { notIn: goalIds } }] }
+          : { matchId }
+      const staleCards: Prisma.MatchCardWhereInput =
+        cardIds.length > 0
+          ? { matchId, OR: [{ leagueEventId: null }, { leagueEventId: { notIn: cardIds } }] }
+          : { matchId }
+
+      await tx.matchGoal.deleteMany({ where: staleGoals })
+      await tx.matchCard.deleteMany({ where: staleCards })
+    })
+
+    console.log(`  ✓ Saved events for match ${leagueMatchId} (${goals.length} goals, ${cards.length} cards)`)
   } catch (err) {
     console.error(`Error saving events for match ${leagueMatchId}:`, err)
   }
