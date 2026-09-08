@@ -232,3 +232,46 @@ export async function calculateScorersUpToDate(
 
   return scorers
 }
+
+export interface AllTimeTotals {
+  played: number
+  won: number
+  goalsFor: number
+}
+
+/**
+ * All-time totals for a team across every tournament, counting only matches
+ * that already have a score. Goals come from the match result rather than
+ * `MatchGoal` rows, which are only filled in for the matches we detail.
+ */
+export async function calculateAllTimeTotals(
+  teamName: string
+): Promise<AllTimeTotals> {
+  const matches = await prisma.match.findMany({
+    where: {
+      OR: [{ homeTeam: { name: teamName } }, { awayTeam: { name: teamName } }],
+      homeScore: { not: null },
+      awayScore: { not: null },
+    },
+    select: {
+      homeScore: true,
+      awayScore: true,
+      homeTeam: { select: { name: true } },
+    },
+  })
+
+  return matches.reduce<AllTimeTotals>(
+    (totals, match) => {
+      const isHome = match.homeTeam?.name === teamName
+      const goalsFor = isHome ? match.homeScore! : match.awayScore!
+      const goalsAgainst = isHome ? match.awayScore! : match.homeScore!
+
+      return {
+        played: totals.played + 1,
+        won: totals.won + (goalsFor > goalsAgainst ? 1 : 0),
+        goalsFor: totals.goalsFor + goalsFor,
+      }
+    },
+    { played: 0, won: 0, goalsFor: 0 }
+  )
+}
