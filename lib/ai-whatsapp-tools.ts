@@ -14,6 +14,27 @@ import {
 const DEFAULT_LIMIT = 50
 const MAX_LIMIT = 100
 
+/**
+ * Tool arguments come from whatever model the channel is configured with, and
+ * not all of them respect JSON types. MiniMax-M3 — what the WhatsApp channel
+ * runs — sends `{"tournamentId":"205"}` and `{"limit":"10"}`: strings where the
+ * schema wants integers. In AI SDK v4 a schema rejection aborts the whole
+ * `generateText`, so the group gets the "no pude procesar bien esa pregunta"
+ * fallback instead of an answer.
+ *
+ * Coercing at the schema is the cheap half of the fix (the repair hook in
+ * `ai-whatsapp-agent.ts` is the other half). `.nullish()` still short-circuits
+ * on null, so an explicit null is not coerced into 0.
+ */
+const int = () => z.coerce.number().int()
+
+/**
+ * Same idea for booleans, minus `z.coerce.boolean()` — that would read the
+ * string "false" as true, since any non-empty string is truthy.
+ */
+const bool = () =>
+  z.preprocess(v => (v === 'true' ? true : v === 'false' ? false : v), z.boolean())
+
 const startOfToday = (): Date => {
   const d = new Date()
   d.setHours(0, 0, 0, 0)
@@ -95,17 +116,17 @@ export const listMatchesTool = tool({
     'Filtros: status (played|upcoming|any), opponent, teamId, year, from/to (ISO date), tournamentId, allTournaments, limit.',
   parameters: z.object({
     status: z.enum(['played', 'upcoming', 'any']).nullish(),
-    teamId: z.number().int().nullish(),
+    teamId: int().nullish(),
     opponent: z.string().nullish(),
-    year: z.number().int().nullish(),
-    tournamentId: z.number().int().nullish(),
+    year: int().nullish(),
+    tournamentId: int().nullish(),
     allTournaments: z
       .boolean()
       .nullish()
       .describe('Si true, no aplica el filtro por torneo activo (busca en toda la historia).'),
     from: z.string().nullish().describe('ISO date inclusive'),
     to: z.string().nullish().describe('ISO date inclusive'),
-    limit: z.number().int().min(1).max(MAX_LIMIT).nullish(),
+    limit: int().min(1).max(MAX_LIMIT).nullish(),
     order: z.enum(['asc', 'desc']).nullish(),
   }),
   execute: async ({ status, teamId, opponent, year, tournamentId, allTournaments, from, to, limit, order }) => {
@@ -156,7 +177,7 @@ export const listMatchesTool = tool({
 
 export const getMatchByIdTool = tool({
   description: 'Devuelve un partido por id con equipos, fecha, marcador, sede.',
-  parameters: z.object({ matchId: z.number().int() }),
+  parameters: z.object({ matchId: int() }),
   execute: async ({ matchId }) => {
     const m = await prisma.match.findUnique({
       where: { id: matchId },
@@ -173,7 +194,7 @@ export const getMatchByIdTool = tool({
 export const getMatchDetailsTool = tool({
   description:
     'Devuelve TODO el contexto de un partido: goles, tarjetas, partidos previos en la fase, tabla hasta esa fecha, próximos partidos, otros resultados de la jornada e historial vs el rival. Tool "fat" — úsalo cuando necesites contexto rico para narrar.',
-  parameters: z.object({ matchId: z.number().int() }),
+  parameters: z.object({ matchId: int() }),
   execute: async ({ matchId }) => {
     const match = await prisma.match.findUnique({
       where: { id: matchId },
@@ -212,7 +233,7 @@ export const getMatchDetailsTool = tool({
 
 export const getMatchGoalsTool = tool({
   description: 'Devuelve los goleadores de un partido (nombre, equipo, minuto).',
-  parameters: z.object({ matchId: z.number().int() }),
+  parameters: z.object({ matchId: int() }),
   execute: async ({ matchId }) => {
     const [goals, nameMap] = await Promise.all([
       prisma.matchGoal.findMany({
@@ -233,7 +254,7 @@ export const getMatchGoalsTool = tool({
 export const getNextMatchTool = tool({
   description: 'Próximo partido (no jugado aún) de AC SED por defecto, o de un equipo dado.',
   parameters: z.object({
-    teamId: z.number().int().nullish(),
+    teamId: int().nullish(),
     opponent: z.string().nullish(),
   }),
   execute: async ({ teamId, opponent }) => {
@@ -258,7 +279,7 @@ export const getNextMatchTool = tool({
 export const getLastPlayedMatchTool = tool({
   description: 'Último partido jugado (con marcador) de AC SED por defecto, o de un equipo dado.',
   parameters: z.object({
-    teamId: z.number().int().nullish(),
+    teamId: int().nullish(),
     opponent: z.string().nullish(),
   }),
   execute: async ({ teamId, opponent }) => {
@@ -285,7 +306,7 @@ export const listRosterTool = tool({
     'Lista el plantel de AC SED (todos los jugadores del roster). Filtros: position, activeOnly. NUNCA devuelve teléfonos. Útil cuando te preguntan "quiénes son los jugadores", "qué arqueros hay", "cuántos somos", etc.',
   parameters: z.object({
     position: z.string().nullish().describe('Filtrar por posición exacta (arquero, defensa, mediocampista, delantero…).'),
-    activeOnly: z.boolean().nullish().describe('Si true, solo jugadores activos. Default true.'),
+    activeOnly: bool().nullish().describe('Si true, solo jugadores activos. Default true.'),
   }),
   execute: async ({ position, activeOnly }) => {
     const where: Record<string, unknown> = {}
@@ -311,7 +332,7 @@ export const listRosterTool = tool({
 export const getMatchAttendanceTool = tool({
   description:
     'Devuelve la asistencia de AC SED a un partido (por matchId): listas de jugadores confirmados, llega tarde, de visita, declinaron, no_show y pendientes (sin responder). Cada jugador tiene name, nicknames, position, number. NUNCA devuelve teléfonos. Útil para "quiénes van al partido del sábado", "cuántos confirmaron", etc.',
-  parameters: z.object({ matchId: z.number().int() }),
+  parameters: z.object({ matchId: int() }),
   execute: async ({ matchId }) => {
     const rows = await prisma.playerMatch.findMany({
       where: { matchId },
@@ -437,11 +458,11 @@ export const getTopScorersTool = tool({
     'Para histórico pasá `allTournaments: true` o un `tournamentId`/`year` específico. ' +
     'Filtros: year, tournamentId, allTournaments, teamName (para limitar a un equipo). Default limit 10.',
   parameters: z.object({
-    year: z.number().int().nullish(),
-    tournamentId: z.number().int().nullish(),
-    allTournaments: z.boolean().nullish(),
+    year: int().nullish(),
+    tournamentId: int().nullish(),
+    allTournaments: bool().nullish(),
     teamName: z.string().nullish(),
-    limit: z.number().int().min(1).max(50).nullish(),
+    limit: int().min(1).max(50).nullish(),
   }),
   execute: async ({ year, tournamentId, allTournaments, teamName, limit }) => {
     const effectiveLimit = limit ?? 10
@@ -492,9 +513,9 @@ export const getPlayerSeasonStatsTool = tool({
   description:
     'Estadísticas de un jugador del roster (por id) en un año o torneo: goles, partidos jugados, tarjetas. Buscar el id con searchPlayer si solo tienes el nombre.',
   parameters: z.object({
-    playerId: z.number().int(),
-    year: z.number().int().nullish(),
-    tournamentId: z.number().int().nullish(),
+    playerId: int(),
+    year: int().nullish(),
+    tournamentId: int().nullish(),
   }),
   execute: async ({ playerId, year, tournamentId }) => {
     const matchWhere: Record<string, unknown> = { homeScore: { not: null } }
@@ -554,10 +575,10 @@ export const getTeamCardsTool = tool({
     'Devuelve, por jugador: total amarillas, total rojas, tarjetas recientes (partido, minuto, tipo) y `likelySuspendedNextMatch` (heurística: roja en último partido o 2+ amarillas en el mismo partido — calculado SOBRE EL SCOPE FILTRADO).',
   parameters: z.object({
     teamName: z.string().min(1),
-    tournamentId: z.number().int().nullish(),
-    allTournaments: z.boolean().nullish(),
+    tournamentId: int().nullish(),
+    allTournaments: bool().nullish(),
     sinceDate: z.string().nullish().describe('ISO date — solo tarjetas de partidos jugados >= esta fecha.'),
-    limit: z.number().int().min(1).max(MAX_LIMIT).nullish(),
+    limit: int().min(1).max(MAX_LIMIT).nullish(),
   }),
   execute: async ({ teamName, tournamentId, allTournaments, sinceDate, limit }) => {
     const matchWhere: Record<string, unknown> = { homeScore: { not: null } }
@@ -714,7 +735,7 @@ export const listTournamentsTool = tool({
   description:
     'Lista todos los torneos guardados (id, nombre, si está activo, fases, rango de fechas y total de partidos). Útil para mapear "Apertura 2025" o "el torneo pasado" a un tournamentId antes de llamar otras tools.',
   parameters: z.object({
-    activeOnly: z.boolean().nullish().describe('Si true, solo torneos con isActive=true.'),
+    activeOnly: bool().nullish().describe('Si true, solo torneos con isActive=true.'),
   }),
   execute: async ({ activeOnly }) => {
     const tournaments = await prisma.tournament.findMany({
@@ -758,7 +779,7 @@ export const listTournamentsTool = tool({
 export const getTournamentInfoTool = tool({
   description:
     'Devuelve info del torneo (por defecto el activo): nombre, fases, equipos del grupo de AC SED, reglas hardcodeadas (6 equipos, 5 partidos, 2 ascienden, 2 descienden), partidos jugados/restantes en la fase actual.',
-  parameters: z.object({ tournamentId: z.number().int().nullish() }),
+  parameters: z.object({ tournamentId: int().nullish() }),
   execute: async ({ tournamentId }) => {
     const tournament = tournamentId
       ? await prisma.tournament.findUnique({
@@ -822,9 +843,9 @@ export const getCurrentStandingsTool = tool({
   description:
     'Tabla de posiciones actual del grupo de AC SED (calculada desde los partidos jugados hasta hoy). Si pasas tournamentId/stageId/groupId úsalos; sino, default al grupo activo de AC SED.',
   parameters: z.object({
-    tournamentId: z.number().int().nullish(),
-    stageId: z.number().int().nullish(),
-    groupId: z.number().int().nullish(),
+    tournamentId: int().nullish(),
+    stageId: int().nullish(),
+    groupId: int().nullish(),
   }),
   execute: async ({ tournamentId, stageId, groupId }) => {
     let scope: { tournamentId: number; stageId: number; groupId: number } | null = null
@@ -849,10 +870,10 @@ export const getRemainingFixturesTool = tool({
   description:
     'Lista de partidos pendientes (date > now). Si no se especifica teamId/opponent, devuelve todos los partidos pendientes del grupo activo de AC SED para todos los equipos.',
   parameters: z.object({
-    tournamentId: z.number().int().nullish(),
-    stageId: z.number().int().nullish(),
-    groupId: z.number().int().nullish(),
-    teamId: z.number().int().nullish(),
+    tournamentId: int().nullish(),
+    stageId: int().nullish(),
+    groupId: int().nullish(),
+    teamId: int().nullish(),
     opponent: z.string().nullish(),
   }),
   execute: async ({ tournamentId, stageId, groupId, teamId, opponent }) => {
@@ -895,9 +916,9 @@ export const getPromotionProjectionTool = tool({
   description:
     'Para cada equipo del grupo activo de AC SED: puntos actuales, partidos restantes, máximo posible (current + 3*restantes), mínimo posible, y rivales pendientes. Útil para razonar "qué necesitamos para ascender/no descender". Reglas del torneo: 6 equipos, todos contra todos (5 partidos), 2 primeros ascienden, 2 últimos descienden.',
   parameters: z.object({
-    tournamentId: z.number().int().nullish(),
-    stageId: z.number().int().nullish(),
-    groupId: z.number().int().nullish(),
+    tournamentId: int().nullish(),
+    stageId: int().nullish(),
+    groupId: int().nullish(),
   }),
   execute: async ({ tournamentId, stageId, groupId }) => {
     let scope: { tournamentId: number; stageId: number; groupId: number } | null = null
