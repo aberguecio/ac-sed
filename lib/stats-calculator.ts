@@ -232,3 +232,64 @@ export async function calculateScorersUpToDate(
 
   return scorers
 }
+
+export interface AllTimeTotals {
+  played: number
+  won: number
+  drawn: number
+  goalsFor: number
+  goalsAgainst: number
+  goalDifference: number
+  /** Points won over points available, as a percentage (3 per match). */
+  performance: number
+}
+
+/**
+ * All-time totals for a team across every tournament, counting only matches
+ * that already have a score. Goals come from the match result rather than
+ * `MatchGoal` rows, which are only filled in for the matches we detail.
+ */
+export async function calculateAllTimeTotals(
+  teamName: string
+): Promise<AllTimeTotals> {
+  const matches = await prisma.match.findMany({
+    where: {
+      OR: [{ homeTeam: { name: teamName } }, { awayTeam: { name: teamName } }],
+      homeScore: { not: null },
+      awayScore: { not: null },
+    },
+    select: {
+      homeScore: true,
+      awayScore: true,
+      homeTeam: { select: { name: true } },
+    },
+  })
+
+  const totals = matches.reduce(
+    (acc, match) => {
+      const isHome = match.homeTeam?.name === teamName
+      const goalsFor = isHome ? match.homeScore! : match.awayScore!
+      const goalsAgainst = isHome ? match.awayScore! : match.homeScore!
+
+      return {
+        played: acc.played + 1,
+        won: acc.won + (goalsFor > goalsAgainst ? 1 : 0),
+        drawn: acc.drawn + (goalsFor === goalsAgainst ? 1 : 0),
+        goalsFor: acc.goalsFor + goalsFor,
+        goalsAgainst: acc.goalsAgainst + goalsAgainst,
+      }
+    },
+    { played: 0, won: 0, drawn: 0, goalsFor: 0, goalsAgainst: 0 }
+  )
+
+  const pointsAvailable = totals.played * 3
+
+  return {
+    ...totals,
+    goalDifference: totals.goalsFor - totals.goalsAgainst,
+    performance:
+      pointsAvailable === 0
+        ? 0
+        : Math.round(((totals.won * 3 + totals.drawn) / pointsAvailable) * 100),
+  }
+}

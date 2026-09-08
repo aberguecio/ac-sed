@@ -5,6 +5,7 @@ import { TeamLogo } from "@/components/team-logo";
 import { HomeGallery, type HomeGalleryImage } from "@/components/home-gallery";
 import Link from "next/link";
 import { ACSED_TEAM_NAME, isACSED } from "@/lib/team-utils";
+import { calculateAllTimeTotals } from "@/lib/stats-calculator";
 
 export const revalidate = 300; // revalidate every 5 min
 
@@ -25,7 +26,6 @@ export default async function HomePage() {
   let standings: Awaited<
     ReturnType<typeof prisma.standing.findMany<{ include: { team: true } }>>
   > = [];
-  let acsedStanding: (typeof standings)[number] | null = null;
 
   if (latestStanding) {
     // Get standings for the same tournament/stage/group as AC SED
@@ -40,8 +40,6 @@ export default async function HomePage() {
       },
       orderBy: { position: "asc" },
     });
-    acsedStanding =
-      standings.find((s) => s.team.name === ACSED_TEAM_NAME) || null;
   }
 
   const homeBackgrounds = await prisma.instagramBackground.findMany({
@@ -58,7 +56,7 @@ export default async function HomePage() {
     ...homeBackgrounds.map((b) => ({ src: b.imageUrl, alt: b.name })),
   ];
 
-  const [latestNews, allPhaseMatches] = await Promise.all([
+  const [latestNews, allPhaseMatches, allTimeTotals] = await Promise.all([
     prisma.newsArticle.findMany({
       where: { published: true },
       orderBy: { generatedAt: "desc" },
@@ -87,6 +85,7 @@ export default async function HomePage() {
       },
       orderBy: { date: "asc" },
     }),
+    calculateAllTimeTotals(ACSED_TEAM_NAME),
   ]);
 
   // Separar partidos jugados y por jugar
@@ -151,23 +150,29 @@ export default async function HomePage() {
               </div>
             </div>
 
-            {/* Stats cards with glassmorphism */}
-            {acsedStanding && (
+            {/* All-time stats cards with glassmorphism */}
+            <div>
+              <p className="text-xs uppercase tracking-wider text-wheat mb-3 text-center">
+                Historia del club
+              </p>
               <div className="grid grid-cols-3 gap-2 md:gap-4">
                 {[
                   {
-                    label: "Posición",
-                    value: `#${acsedStanding.position}`,
+                    label: "Partidos jugados",
+                    value: allTimeTotals.played,
                     color: "text-wheat",
                   },
                   {
-                    label: "Puntos",
-                    value: acsedStanding.points,
+                    label: "Rendimiento",
+                    value: `${allTimeTotals.performance}%`,
                     color: "text-green-400",
                   },
                   {
-                    label: "Partidos",
-                    value: acsedStanding.played,
+                    label: "Diferencia de gol",
+                    value:
+                      allTimeTotals.goalDifference > 0
+                        ? `+${allTimeTotals.goalDifference}`
+                        : allTimeTotals.goalDifference,
                     color: "text-blue-400",
                   },
                 ].map(({ label, value, color }) => (
@@ -186,7 +191,7 @@ export default async function HomePage() {
                   </div>
                 ))}
               </div>
-            )}
+            </div>
           </div>
 
           {/* Last Match Highlight - Inside same section */}
