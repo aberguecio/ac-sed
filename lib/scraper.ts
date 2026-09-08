@@ -589,6 +589,11 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
           existing.homeTeamId !== homeTeamId ||
           existing.awayTeamId !== awayTeamId ||
           existing.venue !== (match.grounds || null) ||
+          // `roundName` and `groupId` were built into `matchData` but never
+          // compared nor written, so a match moved to another group — or a
+          // renamed round — was created once and then never corrected.
+          existing.roundName !== matchData.roundName ||
+          existing.groupId !== matchData.groupId ||
           dateChanged
         ) {
           savedMatch = await prisma.match.update({
@@ -601,6 +606,8 @@ async function processSingleStage(tournamentId: number, stageId: number): Promis
               homeTeamId: homeTeamId,
               awayTeamId: awayTeamId,
               venue: match.grounds || null,
+              roundName: matchData.roundName,
+              groupId: matchData.groupId,
               date: matchDate,
             },
           })
