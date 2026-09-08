@@ -109,17 +109,32 @@ async function processResultMatch(matchId: number) {
 const handleWeeklyResult: JobHandler = async () => {
   const { newMatches } = await runScraper('scheduler')
 
-  if (newMatches.length === 0) {
-    return { status: 'noop', message: 'sin partido nuevo', clearRetry: true }
+  // Only matches that were actually played: `newMatches` also carries rows
+  // that merely appeared in the fixture, and generating a chronicle for one
+  // of those invents a scoreline. The manual route already filtered this way
+  // (`app/api/scrape/route.ts`); the rule was missing here, which is how four
+  // fixture republications produced 20 news articles about matches nobody had
+  // played yet.
+  const playedMatches = newMatches.filter(m => m.homeScore !== null && m.awayScore !== null)
+
+  if (playedMatches.length === 0) {
+    return {
+      status: 'noop',
+      message:
+        newMatches.length > 0
+          ? `${newMatches.length} partido(s) nuevo(s), ninguno jugado todavía`
+          : 'sin partido nuevo',
+      clearRetry: true,
+    }
   }
 
-  for (const match of newMatches) {
+  for (const match of playedMatches) {
     await processResultMatch(match.id)
   }
 
   return {
     status: 'success',
-    message: `procesados ${newMatches.length} partido(s)`,
+    message: `procesados ${playedMatches.length} partido(s)`,
     clearRetry: true,
   }
 }
