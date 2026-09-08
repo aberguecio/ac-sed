@@ -30,7 +30,10 @@ export default async function MatchInfoPage({ params }: PageProps) {
           rosterPlayer: true,
           assistRosterPlayer: true,
         },
-        orderBy: { createdAt: 'asc' },
+        // Hand-set sequence first (see `lib/goal-sequence.ts`); the rows
+        // nobody has ordered yet fall back to the order the league's events
+        // endpoint happened to return.
+        orderBy: [{ orderIndex: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }],
       },
       cards: {
         where: {

@@ -8,6 +8,8 @@
 - `GET  /api/tournaments` — list tournaments
 - `GET  /api/cron` — cron-only; header `X-Cron-Secret` required; runs scraper + content generation
 - `GET/POST /api/admin/matches/duplicates` — inspect / merge the duplicate `Match` rows an old fixture republication left behind (see *Match identity* below)
+- `PUT  /api/admin/matches/[id]/goal-order` — store the order of a match's goals (body `{ goalIds: number[] }`, the full sequence)
+- `PATCH /api/admin/match-goals/[goalId]` — scorer, assist and `minute`
 
 ### News
 - `GET/POST /api/news` — list (paginated, `?all=true` includes unpublished) / create
@@ -86,6 +88,42 @@ The entity upserts (`Team`, `Tournament`, `Stage`, `Group`, `ScrapedPlayer`)
 compare before writing. Consequence worth knowing: `Team.updatedAt` used to
 advance every two hours regardless, so historical values of it mean nothing.
 
+### Goal order (`lib/goal-sequence.ts`)
+
+The league gives goals no order and no minute: the events endpoint returns
+whatever sequence it likes, and `minute` always arrives null. The admin used to
+read the goals in `createdAt` order — that same arbitrary sequence — and
+nothing could set a minute at all, even though the column existed and two
+queries were already sorting by it (sorting nothing, since every value was
+null).
+
+`MatchGoal.orderIndex` is now the single display order, set from
+`/admin/matches/[id]/info`:
+
+- **A goal with a `minute` is placed by its minute** and cannot be dragged; its
+  position is a consequence of the data.
+- **A goal without a minute is dragged into place**, and stays anchored behind
+  the minuted goal it follows (or at the front, when no minuted goal precedes
+  it).
+
+So setting a minute re-sorts the list — `renormalizeGoalOrder()` re-places the
+minuted goals and keeps the minute-less ones attached to their anchor — while a
+drag writes `orderIndex` directly through the endpoint above. A sequence that
+would move a minuted goal is rejected with 409: that means a stale page, not an
+intention. The order covers the rival's goals too, since a sequence only reads
+as a match if every goal is in it.
+
+Ordering is `orderIndex` (nulls last) → `minute` (nulls last) → `createdAt`, so
+matches nobody has curated keep the behaviour they had. `getMatchContext` reads
+the goals in that order and states the running sequence in the prompt, which is
+what lets a chronicle say who opened and who sealed the match instead of
+listing names.
+
+Editing a scorer, an assist, a minute or the order sets `Match.eventsLocked`,
+the existing convention for manual event data. `orderIndex` and `minute` are
+also absent from the scraper's upsert payloads, so a re-scrape does not touch
+them.
+
 ### What the scraper reports (`lib/match-changes.ts`)
 
 `runScraper` returns `changes: MatchChange[]` — `created`, `result-arrived`,
@@ -155,6 +193,7 @@ Logos: parses Liga B CDN (`liga-b.nyc3.digitaloceanspaces.com`) UUIDs so we can 
 | `lib/team-utils.ts` | `isACSED()`, `ACSED_TEAM_ID=2836`, `ACSED_TEAM_NAME='AC Sed'` |
 | `lib/match-consolidation.ts` | Match natural key, `resolveFixtureMatch()`, `consolidateMatches()`, `findDuplicateMatchGroups()` |
 | `lib/match-changes.ts` | `MatchChange` union + `matchesWithNewResult()` — the only door from a scrape to content |
+| `lib/goal-sequence.ts` | Goal ordering: pure sequencing (`normalizeByMinute`, `minuteOrderViolation`) + `applyGoalSequence()` / `renormalizeGoalOrder()` |
 
 ## Cron
 

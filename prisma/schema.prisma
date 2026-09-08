@@ -341,6 +341,13 @@ model MatchGoal {
   // match and reinserting, which is what used to burn ~77k ids and destroy
   // the manual `rosterPlayerId` link on every re-scrape.
   leagueEventId   Int?           @unique
+  // Display order of the goal within its match, 1-based. The league gives no
+  // order at all — the events endpoint returns whatever sequence it likes and
+  // never sends a minute — so this is set from the admin: goals with a
+  // `minute` are placed by it, goals without one are dragged into place. Null
+  // on rows nobody has ordered yet, which fall back to `createdAt`.
+  // See `lib/goal-sequence.ts`. Never written by the scraper's upsert.
+  orderIndex      Int?
   // Optional: present when the goal is attributed to a Liga B player.
   // Null when the goal belongs to a roster-only player (e.g. a substitute
   // not registered in Liga B).
