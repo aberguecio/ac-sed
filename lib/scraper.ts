@@ -103,10 +103,49 @@ function detectDataType(url: string, body: unknown): 'standings' | 'results' | '
   return null
 }
 
+// The league's API sits behind Cloudflare and goes down: a 521 on
+// 2026-09-08 killed a whole run — standings, matches and events — because a
+// single bad response threw straight out of the scrape. Retry the failures
+// that are worth retrying before giving up on the corrida.
+const FETCH_ATTEMPTS = 3
+const FETCH_BACKOFF_MS = 500
+
+/** 429 and 5xx are transient; a 404 or a 400 will still be that on retry. */
+function isRetriableStatus(status: number): boolean {
+  return status === 429 || status >= 500
+}
+
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
 async function fetchAPI(endpoint: string) {
-  const res = await fetch(`${LIGAB_API}${endpoint}`)
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
+  let lastError: Error | undefined
+
+  for (let attempt = 1; attempt <= FETCH_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(`${LIGAB_API}${endpoint}`)
+      if (res.ok) return res.json()
+
+      const error = new Error(`API error: ${res.status}`)
+      if (!isRetriableStatus(res.status)) throw error
+      lastError = error
+    } catch (err) {
+      // A network-level failure (DNS, reset, timeout) is as transient as a
+      // 5xx. Anything thrown above as non-retriable is rethrown untouched.
+      const error = err instanceof Error ? err : new Error(String(err))
+      if (error.message.startsWith('API error: ') && !isRetriableStatus(Number(error.message.slice(11)))) {
+        throw error
+      }
+      lastError = error
+    }
+
+    if (attempt < FETCH_ATTEMPTS) {
+      const wait = FETCH_BACKOFF_MS * 2 ** (attempt - 1)
+      console.warn(`  ⏳ ${endpoint} failed (${lastError?.message}), retry ${attempt}/${FETCH_ATTEMPTS - 1} in ${wait}ms`)
+      await sleep(wait)
+    }
+  }
+
+  throw lastError ?? new Error(`API error: ${endpoint}`)
 }
 
 async function saveMatchEvents(matchId: number, leagueMatchId: number) {
